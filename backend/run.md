@@ -2,18 +2,20 @@
 
 This guide provides step-by-step instructions to set up, test, and run **NimbleVault**, an AI-powered automated video content acquisition, titling, and distribution engine.
 
+> [!TIP]
+> **Looking for the ultra-simple 5-minute visual guide?** Check out [`kid.md`](kid.md) for a step-by-step setup guide anyone can follow!
+
 ---
 
 ## Table of Contents
 1. [Prerequisites](#1-prerequisites)
 2. [Quick Start: Instant Reviewer Demo (Zero Credentials Required)](#2-quick-start-instant-reviewer-demo-zero-credentials-required)
-3. [Running Automated Tests](#3-running-automated-tests)
-4. [Environment Setup & Installation](#4-environment-setup--installation)
-5. [Credential Configuration (`.env`)](#5-credential-configuration-env)
-6. [YouTube OAuth2 Authorization](#6-youtube-oauth2-authorization)
-7. [Running the Live Automation Pipeline](#7-running-the-live-automation-pipeline)
-8. [CLI Commands Reference](#8-cli-commands-reference)
-9. [Troubleshooting & FAQs](#9-troubleshooting--faqs)
+3. [Environment Setup & Installation](#3-environment-setup--installation)
+4. [Credential Configuration (`.env`)](#4-credential-configuration-env)
+5. [YouTube OAuth2 Authorization](#5-youtube-oauth2-authorization)
+6. [Running the Live Automation Pipeline](#6-running-the-live-automation-pipeline)
+7. [CLI Commands Reference](#7-cli-commands-reference)
+8. [Troubleshooting & FAQs](#8-troubleshooting--faqs)
 
 ---
 
@@ -60,49 +62,16 @@ python scripts/run_pipeline.py --demo
 
 ---
 
-## 3. Running Automated Tests
-
-NimbleVault features a comprehensive, hermetic test suite covering 100% of core service modules with zero network flakiness.
-
-```bash
-cd backend
-pytest -v
-```
-
-### Expected Output:
-```
-tests/test_drive_service.py::test_is_video_file_by_extension PASSED
-tests/test_drive_service.py::test_is_video_file_by_mime_type PASSED
-tests/test_drive_service.py::test_list_videos_recursive_mock PASSED
-tests/test_gemini_service.py::test_fallback_title_rubric_examples PASSED
-tests/test_gemini_service.py::test_fallback_title_version_tag_extraction PASSED
-tests/test_gemini_service.py::test_generate_title_success PASSED
-tests/test_gemini_service.py::test_generate_metadata_success PASSED
-tests/test_gemini_service.py::test_generate_title_fallback_on_api_error PASSED
-tests/test_models.py::test_job_status_enum_values PASSED
-tests/test_models.py::test_video_job_orm_instantiation PASSED
-tests/test_models.py::test_video_job_schema_youtube_url_computation PASSED
-tests/test_youtube_service.py::test_is_youtube_authenticated_missing_file PASSED
-tests/test_youtube_service.py::test_upload_video_mock PASSED
-tests/test_youtube_service.py::test_is_video_alive_on_youtube_mock_and_empty PASSED
-tests/test_youtube_service.py::test_is_video_alive_on_youtube_active PASSED
-tests/test_youtube_service.py::test_is_video_alive_on_youtube_deleted PASSED
-
-============================= 16 passed in ~1.3s =============================
-```
-
----
-
-## 4. Environment Setup & Installation
+## 3. Environment Setup & Installation
 
 Follow these steps to set up a clean Python virtual environment and install dependencies:
 
-### Step 4.1: Clone and Navigate
+### Step 3.1: Clone and Navigate
 ```bash
 cd nimblevault/backend
 ```
 
-### Step 4.2: Create and Activate Virtual Environment
+### Step 3.2: Create and Activate Virtual Environment
 - **On Windows (PowerShell)**:
   ```powershell
   python -m venv venv
@@ -119,7 +88,7 @@ cd nimblevault/backend
   source venv/bin/activate
   ```
 
-### Step 4.3: Install Dependencies
+### Step 3.3: Install Dependencies
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -127,11 +96,11 @@ pip install -r requirements.txt
 
 ---
 
-## 5. Credential Configuration (`.env`)
+## 4. Credential Configuration (`.env`)
 
 To run live against actual Google Drive folders and upload to YouTube, configure your environment file:
 
-### Step 5.1: Copy Template
+### Step 4.1: Copy Template
 ```bash
 # Windows PowerShell / CMD:
 copy .env.example .env
@@ -140,7 +109,7 @@ copy .env.example .env
 cp .env.example .env
 ```
 
-### Step 5.2: Configure `.env` Settings
+### Step 4.2: Configure `.env` Settings
 Open `.env` and set the following variables:
 
 ```env
@@ -149,11 +118,8 @@ APP_NAME=NimbleVault
 DEBUG=false
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# Default: Zero-Setup Local SQLite (works immediately out of the box)
+# Zero-Setup Local SQLite (works immediately out of the box)
 DATABASE_URL=sqlite+aiosqlite:///nimblevault.db
-
-# Alternative: PostgreSQL (Enterprise / Production)
-# DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/nimblevault
 
 # ── Google Drive Service Account ──────────────────────────────────────────────
 # Place your GCP Service Account JSON in the backend/ folder:
@@ -164,7 +130,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON=service_account.json
 YOUTUBE_CLIENT_SECRETS_JSON=client_secrets.json
 YOUTUBE_TOKEN_JSON=youtube_token.json
 YOUTUBE_PRIVACY_STATUS=private
-YOUTUBE_VIDEO_CATEGORY_ID=22
+YOUTUBE_VIDEO_CATEGORY_ID=22  # Fallback default category (22 = People & Blogs) if dynamic detection unavailable
 
 # ── Google Gemini AI ──────────────────────────────────────────────────────────
 # Obtain your free Gemini API key from Google AI Studio (https://aistudio.google.com/):
@@ -180,7 +146,7 @@ TEMP_DOWNLOAD_DIR=downloads/temp
 
 ---
 
-## 6. YouTube OAuth2 Authorization
+## 5. YouTube OAuth2 Authorization
 
 Before running live YouTube uploads, authorize your YouTube channel once:
 
@@ -193,15 +159,21 @@ python scripts/auth_youtube.py
 3. Grant permissions for YouTube video uploads (`https://www.googleapis.com/auth/youtube.upload`).
 4. Once completed, your refreshable OAuth credentials will be automatically saved to `youtube_token.json`.
 
+### Verify Existing YouTube Authorization
+To test whether your current YouTube OAuth credentials are valid and active without opening a browser:
+```bash
+python scripts/auth_youtube.py --check
+```
+
 ---
 
-## 7. Running the Live Automation Pipeline
+## 6. Running the Live Automation Pipeline
 
 > [!IMPORTANT]
 > Ensure your virtual environment is active (`.\venv\Scripts\Activate.ps1` on Windows or `source venv/bin/activate` on Linux/macOS) before running `python scripts/...`.
 > Alternatively on Windows, you can invoke the virtual environment python directly: `.\venv\Scripts\python scripts/run_pipeline.py --status`.
 
-### Step 7.1: Inspect Live Status & Audit YouTube Liveness
+### Step 6.1: Inspect Live Status & Audit YouTube Liveness
 Checks the real-time status of all tracked video jobs and audits YouTube. If a video was deleted from YouTube, it is automatically reconciled back to `PENDING`:
 ```bash
 python scripts/run_pipeline.py --status
@@ -209,7 +181,7 @@ python scripts/run_pipeline.py --status
 .\venv\Scripts\python scripts/run_pipeline.py --status
 ```
 
-### Step 7.2: Full Sync (Scan Nested Drive Folders + Audit YouTube)
+### Step 6.2: Full Sync (Scan Nested Drive Folders + Audit YouTube)
 Recursively scans Google Drive for newly added nested folders/videos, audits YouTube liveness for existing videos, reconciles deleted videos to `PENDING`, and displays the updated status table:
 ```bash
 python scripts/run_pipeline.py --sync
@@ -217,31 +189,31 @@ python scripts/run_pipeline.py --sync
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --sync
 ```
 
-### Step 7.3: Safe Dry-Run (Recommended First Run)
+### Step 6.3: Safe Dry-Run (Recommended First Run)
 Performs actual Drive folder traversal, file download, and Gemini AI titling, but **simulates YouTube upload** (preserving your daily YouTube upload quota):
 ```bash
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --dry-run
 ```
 
-### Step 7.4: Scan & Index Drive Only
+### Step 6.4: Scan & Index Drive Only
 Discovers and registers new video assets into the database without triggering downloads or uploads:
 ```bash
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --scan-only
 ```
 
-### Step 7.5: Full End-to-End Live Pipeline
+### Step 6.5: Full End-to-End Live Pipeline
 Runs acquisition, AI titling, and live YouTube publishing:
 ```bash
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs
 ```
 
-### Step 7.6: Process All Pending Jobs
+### Step 6.6: Process All Pending Jobs
 Batch processes any queued or pending jobs in the database:
 ```bash
 python scripts/run_pipeline.py --batch
 ```
 
-### Step 7.7: Force Re-processing
+### Step 6.7: Force Re-processing
 Resets existing video jobs in the database back to `PENDING` and re-runs the entire pipeline:
 ```bash
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --force
@@ -249,7 +221,7 @@ python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --f
 
 ---
 
-## 8. CLI Commands Reference
+## 7. CLI Commands Reference
 
 ### Main Pipeline Runner (`scripts/run_pipeline.py`)
 
@@ -265,6 +237,13 @@ python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --f
 | `python scripts/run_pipeline.py --batch` | Process all `PENDING` jobs in the database sequentially |
 | `python scripts/run_pipeline.py --force` | Reset tracked records in database and re-process from Drive |
 | `python scripts/run_pipeline.py --job-id <UUID>` | Execute pipeline for a single specific database Job ID |
+
+### YouTube Authorization Helper (`scripts/auth_youtube.py`)
+
+| Command / Flag | Purpose |
+| :--- | :--- |
+| `python scripts/auth_youtube.py` | Launch local browser OAuth flow to authenticate YouTube channel and persist token |
+| `python scripts/auth_youtube.py --check` | Verify existing OAuth token validity, refresh if needed, and report authorization status |
 
 ### Standalone Metadata Generator (`scripts/generate_metadata.py`)
 
@@ -283,7 +262,7 @@ python scripts/generate_metadata.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUG
 
 ---
 
-## 9. Troubleshooting & FAQs
+## 8. Troubleshooting & FAQs
 
 ### Q: "YouTube 403 quotaExceeded"
 - **Cause**: Google provides a free default quota of 10,000 units/day for the YouTube Data API v3. Each video upload costs 1,600 units (allowing ~6 uploads per day on the free tier).

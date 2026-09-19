@@ -19,12 +19,32 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+# ── YouTube Category Definitions ───────────────────────────────────────────────
+
+YOUTUBE_CATEGORY_NAMES: dict[str, str] = {
+    "1": "Film & Animation",
+    "2": "Autos & Vehicles",
+    "10": "Music",
+    "15": "Pets & Animals",
+    "17": "Sports",
+    "19": "Travel & Events",
+    "20": "Gaming",
+    "22": "People & Blogs",
+    "23": "Comedy",
+    "24": "Entertainment",
+    "25": "News & Politics",
+    "26": "Howto & Style",
+    "27": "Education",
+    "28": "Science & Technology",
+}
+
+
 # ── Structured Metadata Schema ─────────────────────────────────────────────────
 
 class VideoMetadata(BaseModel):
     """
     Strict schema returned by the Gemini API call.
-    Only contains 'title' and 'description' as requested.
+    Contains 'title', 'description', and 'category_id'.
     """
     title: str = Field(
         description=(
@@ -38,6 +58,18 @@ class VideoMetadata(BaseModel):
             "followed by 3-5 relevant hashtags extracted from folder names"
         ),
     )
+    category_id: str = Field(
+        default="22",
+        description=(
+            "YouTube numeric category ID string best matching the video topic, such as: "
+            "'28' (Science & Technology / Software / Tech Products), "
+            "'27' (Education / Tutorials / Guides), "
+            "'26' (Howto & Style), "
+            "'22' (People & Blogs / Vlogs / Team / Testimonials), "
+            "'24' (Entertainment), '20' (Gaming), '17' (Sports), "
+            "'10' (Music), '25' (News & Politics), '1' (Film & Animation)"
+        ),
+    )
 
     @field_validator("title")
     @classmethod
@@ -47,6 +79,16 @@ class VideoMetadata(BaseModel):
             clean = clean[:97] + "..."
         return clean
 
+    @field_validator("category_id")
+    @classmethod
+    def validate_category_id(cls, v: str) -> str:
+        digits = re.findall(r"\d+", str(v))
+        if digits:
+            cat = digits[0]
+            if cat in YOUTUBE_CATEGORY_NAMES:
+                return cat
+        return "22"
+
     @property
     def tags(self) -> list[str]:
         """Extract clean tags from hashtags in the description (or fallback tags)."""
@@ -55,15 +97,15 @@ class VideoMetadata(BaseModel):
 
     @property
     def category(self) -> str:
-        """Category derived from tags or default."""
-        return self.tags[0].title() if self.tags else "General"
+        """Human-readable YouTube category name derived from category_id."""
+        return YOUTUBE_CATEGORY_NAMES.get(self.category_id, "People & Blogs")
 
 
 # ── Prompt template ────────────────────────────────────────────────────────────
 
 _METADATA_SYSTEM_PROMPT = """\
 You are an expert YouTube content strategist and metadata optimization engine for the NimbleVault automation pipeline.
-Given a Google Drive file route with nested folder hierarchy, generate a high-performing, professionally formatted YouTube title and description.
+Given a Google Drive file route with nested folder hierarchy, generate a high-performing, professionally formatted YouTube title, description, and the best matching YouTube category ID.
 
 Rules:
 1. Title (< 100 characters):
@@ -83,13 +125,39 @@ Rules:
    - Formulate exactly 2 to 3 concise, engaging sentences summarizing the video content and series context based on the complete folder hierarchy and filename.
    - Immediately follow the 2-3 sentences with 3 to 5 relevant hashtags extracted from the folder hierarchy names (e.g., #Products #LaunchX #Tutorial).
 
-3. Output Format:
-   - Enforce strict JSON output with ONLY the two keys: "title" and "description".
+3. Category ID:
+   - Select the most appropriate numeric YouTube Category ID string matching the video subject matter:
+     * "28" - Science & Technology (software, tech products, coding, hardware, engineering, tech demos)
+     * "27" - Education (tutorials, instructional videos, academic lessons, guides)
+     * "26" - Howto & Style (practical craft, DIY, lifestyle, beauty)
+     * "24" - Entertainment (creative media, shows, cultural showcases)
+     * "23" - Comedy (humor, sketches, comedy videos)
+     * "22" - People & Blogs (vlogs, team updates, personal journals, testimonials, meetings)
+     * "20" - Gaming (gameplay, walkthroughs, esports)
+     * "17" - Sports (athletics, workouts, fitness, matches)
+     * "10" - Music (tracks, musical performances, audio)
+     * "25" - News & Politics (news reports, public bulletins, announcements)
+     * "1"  - Film & Animation (cinematic shorts, movie trailers, animations)
+     * "2"  - Autos & Vehicles (cars, vehicles, automotive reviews)
+     * "15" - Pets & Animals (domestic animals, wildlife, pets)
+     * "19" - Travel & Events (travelogues, event coverage, conferences)
+
+4. Output Format:
+   - Enforce strict JSON output with EXACTLY the three keys: "title", "description", and "category_id".
    - Do NOT wrap in markdown code blocks or add extra keys.
 """
 
 
 # ── Service ────────────────────────────────────────────────────────────────────
+
+
+def is_gemini_configured() -> tuple[bool, str]:
+    """Check whether Gemini API key is configured and valid."""
+    key = settings.GEMINI_API_KEY
+    if not key:
+        return False, "GEMINI_API_KEY not configured in .env (offline deterministic engine will be used)"
+    masked = f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***"
+    return True, f"Gemini API key active ({masked}, model: {settings.GEMINI_MODEL})"
 
 
 class GeminiService:
@@ -123,7 +191,7 @@ class GeminiService:
             f"Parsed Folder Hierarchy: {folder_hierarchy}\n"
             f"Raw Filename: {filename}\n"
             f"Video Topic / Context: {file_topic}\n\n"
-            "Generate the YouTube title and description in strict JSON format matching the schema."
+            "Generate the YouTube title, description, and best matching YouTube category ID in strict JSON format matching the schema."
         )
 
         try:
@@ -215,12 +283,51 @@ class GeminiService:
         return title[:100]
 
     @classmethod
+    def _infer_category_id(cls, full_path: str, title: str) -> str:
+        """
+        Derive YouTube category ID from path and title heuristics when Gemini is offline.
+        Returns a valid YouTube numeric category ID string.
+        """
+        text = f"{full_path} {title}".lower()
+        if any(k in text for k in ["gaming", "game", "gameplay", "walkthrough", "speedrun", "playthrough"]):
+            return "20"  # Gaming
+        if any(k in text for k in ["music", "song", "soundtrack", "concert", "audio", "album", "acoustic"]):
+            return "10"  # Music
+        if any(k in text for k in ["sport", "sports", "fitness", "workout", "gym", "match", "race", "athletics"]):
+            return "17"  # Sports
+        if any(k in text for k in ["tutorial", "education", "course", "lesson", "lecture", "guide", "learn", "training", "academic", "study", "getting_started", "getting started"]):
+            return "27"  # Education
+        if any(k in text for k in ["tech", "technology", "software", "product", "launch", "coding", "code", "programming", "python", "developer", "engineering", "ai", "hardware", "device"]):
+            return "28"  # Science & Technology
+        if any(k in text for k in ["howto", "how-to", "diy", "style", "craft", "recipe", "cooking", "fashion", "makeup"]):
+            return "26"  # Howto & Style
+        if any(k in text for k in ["film", "movie", "trailer", "animation", "short film", "cinema"]):
+            return "1"   # Film & Animation
+        if any(k in text for k in ["car", "cars", "auto", "vehicle", "automotive", "driving"]):
+            return "2"   # Autos & Vehicles
+        if any(k in text for k in ["pet", "pets", "dog", "cat", "animal", "wildlife"]):
+            return "15"  # Pets & Animals
+        if any(k in text for k in ["travel", "trip", "tour", "vacation", "flight", "destination"]):
+            return "19"  # Travel & Events
+        if any(k in text for k in ["comedy", "funny", "humor", "joke", "prank", "sketch"]):
+            return "23"  # Comedy
+        if any(k in text for k in ["news", "politics", "press", "announcement", "bulletin", "report"]):
+            return "25"  # News & Politics
+        if any(k in text for k in ["vlog", "vlogs", "daily", "routine", "personal", "interview", "testimonial", "archive", "meeting", "team", "review"]):
+            return "22"  # People & Blogs
+        if any(k in text for k in ["entertainment", "show", "performance", "dance", "celebrity"]):
+            return "24"  # Entertainment
+        return "22"      # Default fallback: People & Blogs
+
+    @classmethod
     def _fallback_metadata(cls, full_path: str) -> VideoMetadata:
         """
         Derive full fallback metadata locally when Gemini API is unreachable.
-        Produces title (< 100 chars) and 2-3 sentence description with 3-5 hashtags.
+        Produces title (< 100 chars), 2-3 sentence description with 3-5 hashtags,
+        and dynamically derived category_id based on path/title heuristics.
         """
         title = cls._fallback_title(full_path)
+        category_id = cls._infer_category_id(full_path, title)
 
         # Extract folder hierarchy segments for description & hashtags
         clean = re.sub(r"^Drive/", "", full_path)
@@ -254,4 +361,5 @@ class GeminiService:
         return VideoMetadata(
             title=title[:100],
             description=description,
+            category_id=category_id,
         )

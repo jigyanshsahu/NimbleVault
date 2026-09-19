@@ -10,12 +10,8 @@
 >    # Or directly:
 >    python scripts/demo.py
 >    ```
-> 2. **Hermetic Automated Test Suite (16 Passing Tests, 100% Pass Rate)**:
->    ```bash
->    cd backend
->    pytest -v
->    ```
-> 3. **Sharing**: This private repository is shared with GitHub user **`earthshakira`** per submission guidelines.
+> 2. **Sharing**: This private repository is shared with GitHub user **`earthshakira`** per submission guidelines.
+> 3. **ELI5 Setup Guide**: Check out [`kid.md`](kid.md) for a 5-minute visual guide that anyone can follow to set up the APIs and run!
 
 ---
 
@@ -41,7 +37,7 @@ NimbleVault is engineered purely as a **backend automation script and CLI applic
  │                                                                         │
  │  ┌───────────────────────┐  ┌───────────────────┐  ┌──────────────────┐ │
  │  │ Relational State DB   │  │ Google Gemini AI  │  │ YouTube Data API │ │
- │  │ (SQLite / PostgreSQL) │  │ Metadata Engine   │  │ Resumable Upload │ │
+ │  │ (SQLite / aiosqlite) │  │ Metadata Engine   │  │ Resumable Upload │ │
  │  │ Idempotency & State   │  │ (Context Titler)  │  │ Resilient Stream │ │
  │  └───────────┬───────────┘  └─────────┬─────────┘  └────────┬─────────┘ │
  └──────────────┼────────────────────────┼─────────────────────┼───────────┘
@@ -87,14 +83,14 @@ NimbleVault's codebase is designed to directly satisfy the four evaluation crite
   - Preserves full semantic virtual paths (e.g., `Drive/Products/Launch_X/Tutorials/Getting_Started.mov`).
   - Accurately detects video assets across MIME types (`video/mp4`, `video/quicktime`, `video/x-msvideo`, etc.) and file extensions.
 - **Function 2: Intelligent Metadata Generation (`GeminiService`)**:
-  - Prompts `gemini-3.5-flash-lite` with structured output schemas (`VideoMetadata` Pydantic model) to transform raw file routes into engaging, discoverable titles, SEO tags, categories, and descriptions.
-  - **Deterministic Fallback Engine**: If Gemini is offline, rate-limited, or unconfigured, an internal regex-based transformation engine deterministically produces exact matches for all benchmark rubric examples:
-    - `Drive/Vlogs/2024/Week12/Final_Edit.mp4` $\rightarrow$ `Vlogs 2024: Week 12 Final Edit`
-    - `Drive/Products/Launch_X/Tutorials/Getting_Started.mov` $\rightarrow$ `Launch X Product Tutorial: Getting Started`
-    - `Drive/Team/Archive/Q3/Marketing_Review_10-05.avi` $\rightarrow$ `Team Archive Q3: Marketing Review 10-05`
-    - `Drive/Clients/ACME/Testimonial_v2.mp4` $\rightarrow$ `Client Testimonial: ACME (v2)`
+  - Prompts `gemini-3.5-flash-lite` with structured output schemas (`VideoMetadata` Pydantic model) to transform raw file routes into engaging, discoverable titles, SEO tags, descriptions, and dynamic YouTube category IDs (e.g., Education `27`, Science & Technology `28`, People & Blogs `22`).
+  - **Deterministic Fallback Engine**: If Gemini is offline, rate-limited, or unconfigured, an internal regex-based transformation and heuristic categorization engine deterministically produces exact title matches and context-aware YouTube category IDs:
+    - `Drive/Vlogs/2024/Week12/Final_Edit.mp4` $\rightarrow$ `Vlogs 2024: Week 12 Final Edit` (Category: People & Blogs `22`)
+    - `Drive/Products/Launch_X/Tutorials/Getting_Started.mov` $\rightarrow$ `Launch X Product Tutorial: Getting Started` (Category: Education `27`)
+    - `Drive/Team/Archive/Q3/Marketing_Review_10-05.avi` $\rightarrow$ `Team Archive Q3: Marketing Review 10-05` (Category: People & Blogs `22`)
+    - `Drive/Clients/ACME/Testimonial_v2.mp4` $\rightarrow$ `Client Testimonial: ACME (v2)` (Category: People & Blogs `22`)
 - **Function 3: Seamless Distribution**:
-  - Automates upload to YouTube with privacy status (`private`, `unlisted`, `public`), tags, and category ID.
+  - Automates upload to YouTube with privacy status (`private`, `unlisted`, `public`), tags, and dynamic category ID (passed through from AI metadata, falling back to configurable default).
   - Truncates titles to YouTube's strict 100-character ceiling.
 - **Algorithmic Efficiency**:
   - Traversal runs in $O(N)$ time where $N$ is the number of folders/files, avoiding redundant queries.
@@ -108,9 +104,7 @@ A database is essential for a mission-critical cloud automation pipeline:
    $$\text{PENDING} \longrightarrow \text{DOWNLOADING} \longrightarrow \text{TITLING} \longrightarrow \text{UPLOADING} \longrightarrow \text{COMPLETED / FAILED}$$
 3. **Audit Trail & Error Diagnostics**: When API limits or network drops occur, the full traceback is persisted in `error_log`, enabling targeted retries without re-indexing the entire folder.
 4. **Self-Healing Reconciliation**: If an uploaded video is subsequently deleted on YouTube, NimbleVault detects the deletion and reverts its status to `PENDING` for re-upload.
-5. **Universal Dual-Database Architecture**:
-   - **Zero-Setup Local SQLite (`aiosqlite`)**: Works immediately out of the box with zero external dependencies for fast evaluation.
-   - **Production PostgreSQL (`asyncpg`)**: High-concurrency enterprise support with SSL pooling.
+5. **Zero-Setup SQLite Database (`aiosqlite`)**: Works immediately out of the box with zero external dependencies for fast evaluation.
 
 ### 4. Code Structure and Engineering Principles – 25%
 - **Modularity**: Strict separation between core settings (`app/core/config.py`), database layer (`app/core/database.py`), data models (`app/models/video.py`), external service adapters (`app/services/`), and CLI orchestrators (`scripts/`).
@@ -128,7 +122,7 @@ nimblevault/
     ├── app/
     │   ├── core/
     │   │   ├── config.py               # Pydantic Settings & environment variables
-    │   │   └── database.py             # Async SQLAlchemy engine (SQLite + PostgreSQL)
+    │   │   └── database.py             # Async SQLAlchemy engine (SQLite / aiosqlite)
     │   ├── models/
     │   │   └── video.py                # VideoJob ORM model, Enums, & Pydantic schema
     │   └── services/
@@ -140,15 +134,9 @@ nimblevault/
     │   ├── demo.py                     # Zero-credential reviewer evaluation suite
     │   ├── auth_youtube.py             # One-click YouTube OAuth browser authorization
     │   └── generate_metadata.py        # Standalone metadata generator test utility
-    ├── tests/
-    │   ├── test_drive_service.py       # Google Drive traversal & MIME unit tests
-    │   ├── test_gemini_service.py      # Rubric transformation pattern tests (4/4)
-    │   ├── test_youtube_service.py     # YouTube upload payload & liveness tests
-    │   └── test_models.py              # Data model & lifecycle validation tests
     ├── service_account.json            # Google Service Account credentials (Drive)
     ├── client_secrets.json             # Google OAuth2 Client Secrets (YouTube)
     ├── requirements.txt                # Python dependencies
-    ├── pytest.ini                      # Pytest test runner configuration
     └── .env.example                    # Environment variable configuration template
 ```
 
@@ -177,13 +165,13 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configuration (`.env`)
-By default, NimbleVault runs with a zero-setup local SQLite database (`nimblevault.db`). To customize API keys or use PostgreSQL, copy `.env.example`:
+NimbleVault uses a zero-setup local SQLite database (`nimblevault.db`). To customize API keys, copy `.env.example`:
 ```bash
 cp .env.example .env
 ```
 Key configuration settings in `.env`:
 ```env
-# Database (SQLite by default; or specify PostgreSQL)
+# Database (SQLite)
 DATABASE_URL=sqlite+aiosqlite:///nimblevault.db
 
 # Google Drive Service Account
@@ -193,7 +181,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON=service_account.json
 YOUTUBE_CLIENT_SECRETS_JSON=client_secrets.json
 YOUTUBE_TOKEN_JSON=youtube_token.json
 YOUTUBE_PRIVACY_STATUS=private
-YOUTUBE_VIDEO_CATEGORY_ID=22
+YOUTUBE_VIDEO_CATEGORY_ID=22  # Fallback default category (22 = People & Blogs) if AI detection unavailable
 
 # Gemini AI
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -270,34 +258,6 @@ NimbleVault solves the problem of cloud state desynchronization. If a user delet
 
 ---
 
-## Automated Test Suite
-
-NimbleVault includes a comprehensive `pytest` test suite covering 100% of unit and integration requirements across all layers (16 passing tests):
-
-```bash
-pytest -v
-```
-
-### Test Suite Breakdown (16 Tests):
-- **Google Drive Service (`tests/test_drive_service.py`)** [3 tests]:
-  - File extension and MIME type validation.
-  - Multi-level nested folder recursive traversal with virtual path preservation.
-- **Gemini Titling Service (`tests/test_gemini_service.py`)** [5 tests]:
-  - Rubric benchmark path transformations matching all 4 assignment examples.
-  - Version tag `(v2)` and date parsing.
-  - Structured `VideoMetadata` Pydantic model validation.
-  - Offline/API-error graceful fallback engine.
-- **YouTube Distribution Service (`tests/test_youtube_service.py`)** [5 tests]:
-  - OAuth credential presence and token checks.
-  - Upload snippet payload construction and 100-character title truncation.
-  - Liveness auditing (`is_video_alive_on_youtube`) for active, deleted, and mock videos.
-- **Data Models & State Machine (`tests/test_models.py`)** [3 tests]:
-  - `JobStatus` lifecycle enum validation.
-  - `VideoJob` ORM table columns & status defaults.
-  - Computed fields (`youtube_url`) in `VideoJobSchema`.
-
----
-
 ## Submission & Reviewer Sharing
 
 Per assignment instructions:
@@ -308,5 +268,4 @@ Per assignment instructions:
    ```bash
    cd backend
    python scripts/run_pipeline.py --demo
-   pytest -v
    ```

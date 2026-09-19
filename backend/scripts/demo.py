@@ -113,7 +113,7 @@ def run_demo():
         ai_heading = item["expected_title"]
         print(f"     AI Target Heading:   \"{Style.BOLD}{ai_heading}{Style.RESET}\"")
         print(f"     Rule Fallback Title: \"{meta.title}\"")
-        print(f"     Category:            {meta.category}")
+        print(f"     Dynamic Category:    {Style.GREEN}{meta.category} (YouTube ID: {meta.category_id}){Style.RESET}")
         print(f"     SEO Tags ({len(meta.tags)}):       {', '.join(meta.tags)}")
         print(f"     Validation:          {Style.GREEN}PASSED [OK]{Style.RESET}")
         success_count += 1
@@ -125,6 +125,7 @@ def run_demo():
         mock_yt_url = f"https://www.youtube.com/watch?v={mock_yt_id}"
         print(f"     Assigned Video ID:   {mock_yt_id}")
         print(f"     Assigned URL:        {mock_yt_url}")
+        print(f"     Target Category ID:  {meta.category_id} ({meta.category})")
         print(f"     Privacy Setting:     UNLISTED (Safe creator default)")
         print(f"     Extracted Tags:      {item['tags']}")
         print(f"     Resource Cleanup:    {Style.GREEN}Temporary download file unlinked (0 MB disk leakage).{Style.RESET}")

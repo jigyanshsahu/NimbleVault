@@ -8,7 +8,6 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, String, Text, Index
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -30,7 +29,7 @@ class VideoJob(Base):
     __tablename__ = "video_jobs"
 
     id: str = Column(
-        String(36).with_variant(UUID(as_uuid=False), "postgresql"),
+        String(36),
         primary_key=True,
         default=lambda: str(uuid.uuid4()),
         nullable=False,

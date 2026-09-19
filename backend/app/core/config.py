@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # ── Database ───────────────────────────────────────────────────────────────
-    # Supports SQLite (zero-setup local execution) and PostgreSQL (production asyncpg)
+    # SQLite database (zero-setup local execution via aiosqlite)
     DATABASE_URL: str = "sqlite+aiosqlite:///nimblevault.db"
 
     # ── Google / Drive ─────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     ]
     YOUTUBE_CLIENT_SECRETS_JSON: str = "client_secrets.json"
     YOUTUBE_TOKEN_JSON: str = "youtube_token.json"
-    YOUTUBE_VIDEO_CATEGORY_ID: str = "22"   # "People & Blogs"
+    YOUTUBE_VIDEO_CATEGORY_ID: str = "22"   # Fallback default category ("People & Blogs")
     YOUTUBE_PRIVACY_STATUS: str = "private"  # private | unlisted | public
 
     # ── Gemini ─────────────────────────────────────────────────────────────────

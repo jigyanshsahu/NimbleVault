@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -52,7 +54,17 @@ def is_video_file(name: str, mime: str) -> bool:
     if mime and mime.startswith("video/"):
         return True
     ext = Path(name).suffix.lower()
-    return ext in VIDEO_EXTENSIONS
+    if ext in VIDEO_EXTENSIONS:
+        return True
+    if mime in {
+        "application/x-matroska",
+        "application/mp4",
+        "application/mxf",
+        "application/vnd.rn-realmedia",
+        "application/x-quicktime",
+    }:
+        return True
+    return False
 
 # ── DriveFile dataclass ────────────────────────────────────────────────────────
 
@@ -68,15 +80,47 @@ class DriveFile:
     size: int        # bytes
 
 
-# ── Service builder ────────────────────────────────────────────────────────────
+# ── Auth helper & Service builder ───────────────────────────────────────────────
+
+def is_drive_authenticated(service_account_path: str | None = None) -> tuple[bool, str]:
+    """
+    Check whether the Google Drive Service Account key file exists and is structurally valid.
+    Returns (True, client_email) if valid, or (False, error_description) otherwise.
+    """
+    target_path = service_account_path or settings.GOOGLE_SERVICE_ACCOUNT_JSON
+    if not os.path.exists(target_path):
+        return False, f"Service account key file not found at '{target_path}'"
+    try:
+        with open(target_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if data.get("type") != "service_account":
+            return False, f"File at '{target_path}' is not a Google Service Account key (type={data.get('type')})"
+        email = data.get("client_email", "")
+        if not email or not data.get("private_key"):
+            return False, f"Service account key at '{target_path}' is missing 'client_email' or 'private_key'"
+        return True, email
+    except Exception as exc:
+        return False, f"Failed to parse service account key: {exc}"
+
 
 def _build_drive_service():  # type: ignore[return]
-    """Builds an authenticated Google Drive API v3 service object."""
-    credentials = service_account.Credentials.from_service_account_file(
-        settings.GOOGLE_SERVICE_ACCOUNT_JSON,
-        scopes=settings.GOOGLE_DRIVE_SCOPES,
-    )
-    return build("drive", "v3", credentials=credentials, cache_discovery=False)
+    """Builds an authenticated Google Drive API v3 service object with descriptive error handling."""
+    valid, info = is_drive_authenticated()
+    if not valid:
+        raise RuntimeError(
+            f"Google Drive service account authentication failed: {info}. "
+            f"Please download your GCP Service Account JSON key and place it at '{settings.GOOGLE_SERVICE_ACCOUNT_JSON}'."
+        )
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            settings.GOOGLE_SERVICE_ACCOUNT_JSON,
+            scopes=settings.GOOGLE_DRIVE_SCOPES,
+        )
+        return build("drive", "v3", credentials=credentials, cache_discovery=False)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to initialize Google Drive client from '{settings.GOOGLE_SERVICE_ACCOUNT_JSON}': {exc}"
+        ) from exc
 
 
 # ── Core recursive traversal ───────────────────────────────────────────────────
@@ -154,8 +198,28 @@ class DriveService:
                     .execute()
                 )
             except HttpError as exc:
-                logger.error("Failed to query Google Drive folder '%s' (path: %s): %s", folder_id, current_path, exc)
-                break
+                status_code = getattr(exc.resp, "status", 0)
+                if current_path == "Drive":
+                    valid, email = is_drive_authenticated()
+                    service_email = email if valid else "your Service Account email"
+                    if status_code == 404:
+                        raise RuntimeError(
+                            f"Google Drive folder ID '{folder_id}' was not found (HTTP 404). "
+                            "Please verify the folder ID from the Google Drive URL."
+                        ) from exc
+                    elif status_code == 403:
+                        raise RuntimeError(
+                            f"Google Drive Access Denied (HTTP 403) for folder '{folder_id}'. "
+                            f"The folder has not been shared with {service_email}. "
+                            f"Open the folder in Google Drive, click 'Share', and add {service_email} as Viewer."
+                        ) from exc
+                    else:
+                        raise RuntimeError(
+                            f"Google Drive API query error (HTTP {status_code}) for folder '{folder_id}': {exc}"
+                        ) from exc
+                else:
+                    logger.warning("Failed to query subfolder '%s' (path: %s): %s. Continuing traversal.", folder_id, current_path, exc)
+                    break
 
             for item in response.get("files", []):
                 item_id: str = item["id"]

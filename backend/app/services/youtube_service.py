@@ -51,39 +51,49 @@ def _load_or_refresh_credentials(allow_interactive: bool = False) -> google.oaut
     token_path = settings.YOUTUBE_TOKEN_JSON
 
     if os.path.exists(token_path):
-        with open(token_path) as fh:
-            creds = google.oauth2.credentials.Credentials.from_authorized_user_info(
-                json.load(fh), settings.YOUTUBE_SCOPES
-            )
+        try:
+            with open(token_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+                creds = google.oauth2.credentials.Credentials.from_authorized_user_info(
+                    data, settings.YOUTUBE_SCOPES
+                )
+        except Exception as exc:
+            logger.warning("Could not read YouTube token file '%s': %s", token_path, exc)
+            creds = None
 
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
             _persist_token(creds)
         except Exception as exc:
-            logger.warning("Failed to refresh YouTube token: %s", exc)
+            logger.warning("Failed to refresh YouTube token (%s): %s", type(exc).__name__, exc)
             creds = None
 
     if not creds or not creds.valid:
         if not allow_interactive:
             raise RuntimeError(
-                "YouTube is not authenticated. Please run 'python scripts/auth_youtube.py' "
-                "to authenticate your YouTube account."
+                "YouTube is not authenticated or the OAuth token has expired/revoked. "
+                "Please run 'python scripts/auth_youtube.py' to authenticate your YouTube channel."
             )
         flow = InstalledAppFlow.from_client_secrets_file(
             settings.YOUTUBE_CLIENT_SECRETS_JSON,
             settings.YOUTUBE_SCOPES,
         )
-        creds = flow.run_local_server(port=8080, open_browser=True)
+        try:
+            creds = flow.run_local_server(port=8080, open_browser=True)
+        except Exception:
+            creds = flow.run_local_server(port=0, open_browser=True)
         _persist_token(creds)
 
     return creds
 
 
 def _persist_token(creds: google.oauth2.credentials.Credentials) -> None:
-    with open(settings.YOUTUBE_TOKEN_JSON, "w") as fh:
+    token_path = Path(settings.YOUTUBE_TOKEN_JSON)
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(token_path, "w", encoding="utf-8") as fh:
         fh.write(creds.to_json())
-    logger.info("YouTube token persisted → %s", settings.YOUTUBE_TOKEN_JSON)
+    logger.info("YouTube token persisted → %s", token_path)
 
 
 def _build_youtube_service():  # type: ignore[return]
@@ -100,7 +110,13 @@ class YouTubeService:
     """
 
     def __init__(self) -> None:
-        self._service = _build_youtube_service()
+        try:
+            self._service = _build_youtube_service()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to initialize YouTube API service: {exc}. "
+                "Run 'python scripts/auth_youtube.py' to configure authentication."
+            ) from exc
 
     async def upload_video(
         self,
@@ -108,15 +124,24 @@ class YouTubeService:
         title: str,
         description: str = "",
         tags: list[str] | None = None,
+        category_id: str | None = None,
     ) -> str:
         """
         Resumably upload *file_path* to YouTube.
 
+        Args:
+            file_path: Local path to the video file.
+            title: Title for the video (max 100 chars).
+            description: Description for the video.
+            tags: Optional list of tag strings.
+            category_id: Optional YouTube numeric category ID string. Defaults to settings.YOUTUBE_VIDEO_CATEGORY_ID.
+
         Returns:
             The YouTube video ID (e.g. "dQw4w9WgXcQ").
         """
+        resolved_category_id = category_id or settings.YOUTUBE_VIDEO_CATEGORY_ID
         return await asyncio.to_thread(
-            self._upload_video_sync, file_path, title, description, tags or []
+            self._upload_video_sync, file_path, title, description, tags or [], resolved_category_id
         )
 
     # ── Sync upload (runs in thread pool) ─────────────────────────────────────
@@ -127,13 +152,14 @@ class YouTubeService:
         title: str,
         description: str,
         tags: list[str],
+        category_id: str = settings.YOUTUBE_VIDEO_CATEGORY_ID,
     ) -> str:
         body = {
             "snippet": {
                 "title": title[:100],  # YouTube hard limit
                 "description": description or f"Uploaded via NimbleVault – {file_path.name}",
                 "tags": tags,
-                "categoryId": settings.YOUTUBE_VIDEO_CATEGORY_ID,
+                "categoryId": category_id,
             },
             "status": {
                 "privacyStatus": settings.YOUTUBE_PRIVACY_STATUS,
