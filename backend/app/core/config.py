@@ -49,9 +49,6 @@ class Settings(BaseSettings):
     # ── Local Storage ──────────────────────────────────────────────────────────
     TEMP_DOWNLOAD_DIR: str = os.path.join(tempfile.gettempdir(), "nimblevault_downloads")
 
-    # ── CORS ───────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

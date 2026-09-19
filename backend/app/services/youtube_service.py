@@ -5,10 +5,14 @@ Handles OAuth2 authentication and resumable video uploads.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
+import time
 from pathlib import Path
 
 import google.oauth2.credentials
+import httpx
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -25,9 +29,6 @@ settings = get_settings()
 
 def is_youtube_authenticated(token_path: str | None = None) -> bool:
     """Check whether a valid or refreshable YouTube OAuth token exists."""
-    import os
-    import json
-
     target_path = token_path or get_settings().YOUTUBE_TOKEN_JSON
     if not os.path.exists(target_path):
         return False
@@ -46,9 +47,6 @@ def _load_or_refresh_credentials(allow_interactive: bool = False) -> google.oaut
     Load OAuth2 credentials from the token file, refreshing if expired.
     If allow_interactive is True and token is missing, starts local browser OAuth flow.
     """
-    import json
-    import os
-
     creds: google.oauth2.credentials.Credentials | None = None
     token_path = settings.YOUTUBE_TOKEN_JSON
 
@@ -83,8 +81,6 @@ def _load_or_refresh_credentials(allow_interactive: bool = False) -> google.oaut
 
 
 def _persist_token(creds: google.oauth2.credentials.Credentials) -> None:
-    import json
-
     with open(settings.YOUTUBE_TOKEN_JSON, "w") as fh:
         fh.write(creds.to_json())
     logger.info("YouTube token persisted → %s", settings.YOUTUBE_TOKEN_JSON)
@@ -157,8 +153,6 @@ class YouTubeService:
             media_body=media,
         )
 
-        import time
-
         response = None
         max_retries = 5
         while response is None:
@@ -226,8 +220,6 @@ def is_video_alive_on_youtube(video_id: str) -> bool:
     Check if a video still exists and is accessible on YouTube.
     Detects whether the video was deleted or removed by the uploader.
     """
-    import httpx
-
     if not video_id or video_id.startswith("mock_"):
         return True
 
@@ -242,6 +234,8 @@ def is_video_alive_on_youtube(video_id: str) -> bool:
             is_deleted = (
                 "This video has been removed by the uploader" in text
                 or "This video does not exist" in text
+                or "This video is no longer available" in text
+                or "This video has been removed for violating" in text
             )
             return not is_deleted
     except Exception as exc:

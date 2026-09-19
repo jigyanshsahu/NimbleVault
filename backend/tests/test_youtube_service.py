@@ -31,13 +31,12 @@ async def test_upload_video_mock(tmp_path):
 
         video_id = await service.upload_video(
             file_path=dummy_file,
-            title="A" * 150,  # Long title to test truncation
+            title="A" * 150,
             description="Test description",
             tags=["test", "tag"],
         )
 
         assert video_id == "test_video_12345"
-        # Verify title was truncated to <= 100 characters per YouTube API rules
         insert_kwargs = mock_service.videos().insert.call_args[1]
         inserted_title = insert_kwargs["body"]["snippet"]["title"]
         assert len(inserted_title) <= 100
@@ -80,4 +79,24 @@ def test_is_video_alive_on_youtube_deleted():
         mock_client_cls.return_value.__enter__.return_value = mock_client
 
         assert is_video_alive_on_youtube("deleted_video_id") is False
+
+
+def test_is_video_alive_on_youtube_additional_deleted_variants():
+    """Verify alternative deletion strings return False."""
+    from app.services.youtube_service import is_video_alive_on_youtube
+
+    for phrase in [
+        "This video does not exist",
+        "This video is no longer available",
+        "This video has been removed for violating YouTube's Terms of Service",
+    ]:
+        mock_resp = MagicMock()
+        mock_resp.text = f"<html><body>{phrase}</body></html>"
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.get.return_value = mock_resp
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+
+            assert is_video_alive_on_youtube("some_id") is False
 

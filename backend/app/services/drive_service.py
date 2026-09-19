@@ -7,9 +7,8 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import os
+import time
 from pathlib import Path
-from typing import AsyncGenerator
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -34,6 +33,17 @@ VIDEO_EXTENSIONS: set[str] = {
     ".3gp",
     ".flv",
     ".m4v",
+    ".ts",
+    ".m2ts",
+    ".mts",
+    ".vob",
+    ".ogv",
+    ".m4p",
+    ".f4v",
+    ".asf",
+    ".rm",
+    ".rmvb",
+    ".divx",
 }
 
 
@@ -136,7 +146,7 @@ class DriveService:
                     .list(
                         q=query,
                         pageSize=1000,
-                        fields="nextPageToken, files(id, name, mimeType, size)",
+                        fields="nextPageToken, files(id, name, mimeType, size, shortcutDetails)",
                         pageToken=page_token,
                         supportsAllDrives=True,
                         includeItemsFromAllDrives=True,
@@ -152,6 +162,30 @@ class DriveService:
                 item_name: str = item["name"]
                 mime: str = item.get("mimeType", "")
                 item_path = f"{current_path}/{item_name}"
+
+                # Handle Google Drive shortcut references
+                if mime == "application/vnd.google-apps.shortcut":
+                    shortcut_details = item.get("shortcutDetails", {})
+                    target_id = shortcut_details.get("targetId")
+                    target_mime = shortcut_details.get("targetMimeType", "")
+                    if target_id:
+                        if target_mime == "application/vnd.google-apps.folder":
+                            try:
+                                sub_results = self._list_videos_sync(target_id, item_path, visited_folder_ids)
+                                results.extend(sub_results)
+                            except Exception as sub_exc:
+                                logger.warning("Failed to inspect shortcut folder '%s': %s", item_path, sub_exc)
+                        elif is_video_file(item_name, target_mime):
+                            results.append(
+                                DriveFile(
+                                    file_id=target_id,
+                                    file_name=item_name,
+                                    mime_type=target_mime,
+                                    full_path=item_path,
+                                    size=int(item.get("size", 0)),
+                                )
+                            )
+                    continue
 
                 if mime == "application/vnd.google-apps.folder":
                     # Recurse into sub-folder with fault isolation
@@ -185,8 +219,6 @@ class DriveService:
         file_id: str,
         destination: Path,
     ) -> Path:
-        import time
-
         destination.parent.mkdir(parents=True, exist_ok=True)
         request = self._service.files().get_media(fileId=file_id, supportsAllDrives=True)
         fh = io.FileIO(str(destination), "wb")

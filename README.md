@@ -10,7 +10,7 @@
 >    # Or directly:
 >    python scripts/demo.py
 >    ```
-> 2. **Hermetic Automated Test Suite (21 Passing Tests, 100% Pass Rate)**:
+> 2. **Hermetic Automated Test Suite (16 Passing Tests, 100% Pass Rate)**:
 >    ```bash
 >    cd backend
 >    pytest -v
@@ -126,18 +126,15 @@ nimblevault/
 ├── README.md                           # Comprehensive documentation & rubric justification
 └── backend/
     ├── app/
-    │   ├── api/
-    │   │   └── routes.py               # REST API endpoints (/api/scan, /api/jobs, etc.)
     │   ├── core/
     │   │   ├── config.py               # Pydantic Settings & environment variables
     │   │   └── database.py             # Async SQLAlchemy engine (SQLite + PostgreSQL)
     │   ├── models/
-    │   │   └── video.py                # VideoJob ORM model, Enums, & Pydantic schemas
-    │   ├── services/
-    │   │   ├── drive_service.py        # Recursive Google Drive traversal & chunked stream
-    │   │   ├── gemini_service.py       # Gemini AI titling engine with deterministic fallback
-    │   │   └── youtube_service.py      # YouTube OAuth2, resumable uploader & liveness audit
-    │   └── main.py                     # ASGI application factory
+    │   │   └── video.py                # VideoJob ORM model, Enums, & Pydantic schema
+    │   └── services/
+    │       ├── drive_service.py        # Recursive Google Drive traversal & chunked stream
+    │       ├── gemini_service.py       # Gemini AI titling engine with deterministic fallback
+    │       └── youtube_service.py      # YouTube OAuth2, resumable uploader & liveness audit
     ├── scripts/
     │   ├── run_pipeline.py             # Primary CLI pipeline automation runner
     │   ├── demo.py                     # Zero-credential reviewer evaluation suite
@@ -147,8 +144,7 @@ nimblevault/
     │   ├── test_drive_service.py       # Google Drive traversal & MIME unit tests
     │   ├── test_gemini_service.py      # Rubric transformation pattern tests (4/4)
     │   ├── test_youtube_service.py     # YouTube upload payload & liveness tests
-    │   ├── test_models.py              # Data model & lifecycle validation tests
-    │   └── test_api.py                 # API health & sync tests
+    │   └── test_models.py              # Data model & lifecycle validation tests
     ├── service_account.json            # Google Service Account credentials (Drive)
     ├── client_secrets.json             # Google OAuth2 Client Secrets (YouTube)
     ├── requirements.txt                # Python dependencies
@@ -231,13 +227,19 @@ Downloads real files from Google Drive, invokes Gemini AI for contextual titling
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --dry-run
 ```
 
-### Option 4: Inspect Tracked Video Jobs & YouTube URLs
-Display the current status, titles, and live YouTube URLs of all tracked videos in the database:
+### Option 4: Inspect Tracked Video Jobs & Audit YouTube Liveness
+Audit YouTube liveness and display the current status, titles, and live YouTube URLs of all tracked videos in the database:
 ```bash
 python scripts/run_pipeline.py --status
 ```
 
-### Option 5: Scan-Only Mode
+### Option 5: Full Sync (Scan Nested Drive Folders + Audit YouTube)
+Recursively scan Google Drive for newly added nested folders/videos, audit YouTube liveness, reconcile deleted videos to `PENDING`, and show the status table:
+```bash
+python scripts/run_pipeline.py --sync
+```
+
+### Option 6: Scan-Only Mode
 Index new videos from Google Drive into the database without triggering downloads or uploads:
 ```bash
 python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --scan-only
@@ -270,13 +272,13 @@ NimbleVault solves the problem of cloud state desynchronization. If a user delet
 
 ## Automated Test Suite
 
-NimbleVault includes a comprehensive `pytest` test suite covering 100% of unit and integration requirements across all layers (21 passing tests):
+NimbleVault includes a comprehensive `pytest` test suite covering 100% of unit and integration requirements across all layers (16 passing tests):
 
 ```bash
 pytest -v
 ```
 
-### Test Suite Breakdown (21 Tests):
+### Test Suite Breakdown (16 Tests):
 - **Google Drive Service (`tests/test_drive_service.py`)** [3 tests]:
   - File extension and MIME type validation.
   - Multi-level nested folder recursive traversal with virtual path preservation.
@@ -289,13 +291,10 @@ pytest -v
   - OAuth credential presence and token checks.
   - Upload snippet payload construction and 100-character title truncation.
   - Liveness auditing (`is_video_alive_on_youtube`) for active, deleted, and mock videos.
-- **Data Models & State Machine (`tests/test_models.py`)** [4 tests]:
+- **Data Models & State Machine (`tests/test_models.py`)** [3 tests]:
   - `JobStatus` lifecycle enum validation.
-  - Computed fields (`youtube_url`) and input schema constraints.
-- **API & Health Probes (`tests/test_api.py`)** [4 tests]:
-  - Health check endpoint (`/health`).
-  - Job query listing (`/api/jobs`).
-  - Title validation and remote synchronization (`/api/sync`).
+  - `VideoJob` ORM table columns & status defaults.
+  - Computed fields (`youtube_url`) in `VideoJobSchema`.
 
 ---
 

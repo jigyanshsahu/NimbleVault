@@ -8,9 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 # Add backend directory to sys.path
@@ -58,6 +56,78 @@ async def ensure_database():
         await conn.run_sync(Base.metadata.create_all)
 
 
+async def audit_and_reconcile_youtube_videos(db) -> list[VideoJob]:
+    """
+    Audits all COMPLETED video jobs in the database against YouTube.
+    If a video was deleted or removed on YouTube, resets status to PENDING
+    so it can be re-uploaded automatically.
+    """
+    res = await db.execute(
+        select(VideoJob).where(
+            VideoJob.status == JobStatus.COMPLETED.value,
+            VideoJob.youtube_video_id.isnot(None),
+        )
+    )
+    completed_jobs = res.scalars().all()
+    reconciled: list[VideoJob] = []
+
+    for job in completed_jobs:
+        if not job.youtube_video_id or job.youtube_video_id.startswith("mock_"):
+            continue
+
+        alive = await asyncio.to_thread(is_video_alive_on_youtube, job.youtube_video_id)
+        if not alive:
+            old_vid = job.youtube_video_id
+            print(f"  [RECONCILE] Video '{job.file_name}' (ID: {old_vid}) was DELETED from YouTube!")
+            print(f"              Reconciling status to PENDING for re-upload.")
+            job.status = JobStatus.PENDING.value
+            job.youtube_video_id = None
+            job.error_log = f"Video was deleted on YouTube (previous ID: {old_vid}). Status reconciled to PENDING."
+            db.add(job)
+            reconciled.append(job)
+
+    if reconciled:
+        await db.commit()
+        for j in reconciled:
+            await db.refresh(j)
+
+    return reconciled
+
+
+async def display_status_table(db):
+    """Display the status table of all video jobs currently tracked in database."""
+    res = await db.execute(select(VideoJob).order_by(VideoJob.created_at.desc()))
+    jobs = res.scalars().all()
+
+    print(f"\nTracked Video Jobs in Database ({len(jobs)} total):")
+    print("=" * 115)
+    print(f"{'Status':<16} | {'File Name':<30} | {'Google Drive Route':<34} | {'YouTube / Detail'}")
+    print("-" * 115)
+
+    for j in jobs:
+        route = j.full_path or "(no route)"
+        if len(route) > 32:
+            route = "..." + route[-29:]
+        fname = j.file_name
+        if len(fname) > 28:
+            fname = fname[:25] + "..."
+
+        detail = j.youtube_url or (f"Title: {j.generated_title[:32]}" if j.generated_title else "(pending metadata)")
+        if j.error_log and "deleted on YouTube" in j.error_log and j.status == JobStatus.PENDING.value:
+            status_display = "PENDING (YT del)"
+        else:
+            status_display = j.status
+
+        print(f"{status_display:<16} | {fname:<30} | {route:<34} | {detail}")
+    print("=" * 115)
+
+    pending_cnt = sum(1 for j in jobs if j.status == JobStatus.PENDING.value)
+    completed_cnt = sum(1 for j in jobs if j.status == JobStatus.COMPLETED.value)
+    failed_cnt = sum(1 for j in jobs if j.status == JobStatus.FAILED.value)
+    other_cnt = len(jobs) - (pending_cnt + completed_cnt + failed_cnt)
+    print(f"Summary: {completed_cnt} Completed | {pending_cnt} Pending | {failed_cnt} Failed | {other_cnt} In-Progress\n")
+
+
 async def scan_and_register_videos(folder_id: str) -> list[VideoJob]:
     """
     Step 1: Mass Content Acquisition
@@ -80,7 +150,12 @@ async def scan_and_register_videos(folder_id: str) -> list[VideoJob]:
 
     new_jobs: list[VideoJob] = []
     async with get_db_context() as db:
-        # Check existing jobs to prevent duplicates and reconcile state
+        # Audit YouTube liveness across all completed jobs in database
+        print("\nAuditing YouTube liveness for previously uploaded videos...")
+        reconciled = await audit_and_reconcile_youtube_videos(db)
+        new_jobs.extend(reconciled)
+
+        # Check existing jobs to prevent duplicates and register new files
         result = await db.execute(select(VideoJob))
         existing_jobs_map: dict[str, VideoJob] = {
             j.drive_file_id: j for j in result.scalars().all()
@@ -89,21 +164,15 @@ async def scan_and_register_videos(folder_id: str) -> list[VideoJob]:
         for df in drive_files:
             if df.file_id in existing_jobs_map:
                 existing_job = existing_jobs_map[df.file_id]
-                # Reconcile if marked COMPLETED but deleted on YouTube
-                if existing_job.status == JobStatus.COMPLETED.value and existing_job.youtube_video_id:
-                    if not is_video_alive_on_youtube(existing_job.youtube_video_id):
-                        print(f"  [WARN] Video '{df.file_name}' (ID: {existing_job.youtube_video_id}) was DELETED from YouTube!")
-                        print(f"         Reconciling status to PENDING for re-upload.")
-                        existing_job.status = JobStatus.PENDING.value
-                        existing_job.youtube_video_id = None
-                        existing_job.error_log = "Video was deleted on YouTube. Status reconciled to PENDING."
-                        db.add(existing_job)
-                        new_jobs.append(existing_job)
-                        continue
-
-                print(f"  [INFO] File '{df.file_name}' already indexed in database (skipping).")
+                # Update route if nested folder changed
+                if existing_job.full_path != df.full_path:
+                    print(f"  [PATH] Updated route for '{df.file_name}': {df.full_path}")
+                    existing_job.full_path = df.full_path
+                    db.add(existing_job)
+                print(f"  [INDEXED] '{df.file_name}' ({existing_job.status}) in {df.full_path}")
                 continue
 
+            print(f"  [NEW] Discovered video in nested folder: {df.full_path}")
             job = VideoJob(
                 drive_file_id=df.file_id,
                 file_name=df.file_name,
@@ -186,8 +255,8 @@ async def execute_job(job_id: str, dry_run: bool = False):
                 await db.commit()
 
             print(f"[OK] Generated Title: \"{job.generated_title}\"")
-            print(f"[OK] Category:        {metadata.category}")
-            print(f"[OK] Tags:            {', '.join(metadata.tags)}")
+            print(f"[OK] Description:\n     {metadata.description.replace(chr(10), chr(10) + '     ')}")
+            print(f"[OK] Extracted Tags:   {', '.join(metadata.tags)}")
 
             # ─────────────────────────────────────────────────────────────
             # 3. Distribution (YouTube API)
@@ -248,9 +317,24 @@ async def main():
         help=f"Google Drive folder ID to scan (default: {DEFAULT_FOLDER_ID})",
     )
     parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Perform full sync: scan Google Drive nested folders, audit YouTube liveness, and show status table",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Audit YouTube liveness and display the status table of all tracked video jobs",
+    )
+    parser.add_argument(
+        "--scan",
+        action="store_true",
+        help="When used with --status, also scan Google Drive before displaying status",
+    )
+    parser.add_argument(
         "--scan-only",
         action="store_true",
-        help="Only perform Google Drive acquisition and database registration",
+        help="Only perform Google Drive acquisition, YouTube audit, and show status table",
     )
     parser.add_argument(
         "--dry-run",
@@ -277,11 +361,6 @@ async def main():
         action="store_true",
         help="Run the zero-credential interactive reviewer demo across all 4 rubric scenarios",
     )
-    parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Display the current status and YouTube URLs of all tracked video jobs in the database",
-    )
 
     args = parser.parse_args()
 
@@ -296,18 +375,33 @@ async def main():
 
     await ensure_database()
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Full Sync: Scan Google Drive + Audit YouTube + Display Status Table
+    # ─────────────────────────────────────────────────────────────────────────
+    if args.sync or (args.status and args.scan):
+        await scan_and_register_videos(args.folder_id)
+        async with get_db_context() as db:
+            await display_status_table(db)
+        print("[Tip] To process pending jobs and upload to YouTube:")
+        print("      python scripts/run_pipeline.py\n")
+        return
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Status: Real-time YouTube liveness audit + Display Status Table
+    # ─────────────────────────────────────────────────────────────────────────
     if args.status:
         async with get_db_context() as db:
-            res = await db.execute(select(VideoJob).order_by(VideoJob.created_at.desc()))
-            jobs = res.scalars().all()
-            print(f"\nTracked Video Jobs in Database ({len(jobs)} total):")
-            print("-" * 75)
-            print(f"{'Status':<13} | {'File Name':<32} | {'YouTube / Title'}")
-            print("-" * 75)
-            for j in jobs:
-                detail = j.youtube_url or j.generated_title or "(pending metadata)"
-                print(f"{j.status:<13} | {j.file_name[:30]:<32} | {detail}")
-            print("-" * 75 + "\n")
+            print("\nAuditing YouTube liveness for tracked jobs...")
+            reconciled = await audit_and_reconcile_youtube_videos(db)
+            if reconciled:
+                print(f"[RECONCILED] Detected {len(reconciled)} deleted YouTube video(s). Status updated to PENDING.")
+            else:
+                print("[OK] YouTube liveness audit complete.")
+            await display_status_table(db)
+        print("[Tip] To also scan Google Drive for newly added nested folders & videos:")
+        print("      python scripts/run_pipeline.py --sync\n")
+        print("[Tip] To process pending jobs and upload to YouTube:")
+        print("      python scripts/run_pipeline.py\n")
         return
 
     if args.force:
@@ -337,11 +431,13 @@ async def main():
                 await execute_job(j.id, dry_run=args.dry_run)
         return
 
-    # Default flow: Scan folder then process newly discovered or pending jobs
+    # Default / Scan-only flow: Scan folder and reconcile state
     jobs = await scan_and_register_videos(args.folder_id)
 
     if args.scan_only:
-        print("\nScan-only flag enabled. Skipping pipeline execution.")
+        async with get_db_context() as db:
+            await display_status_table(db)
+        print("Scan-only flag enabled. Skipping pipeline execution.\n")
         return
 
     if not jobs:
@@ -356,6 +452,8 @@ async def main():
 
     if not jobs:
         print("\nNo pending jobs to process. All files are up to date!")
+        async with get_db_context() as db:
+            await display_status_table(db)
         return
 
     for j in jobs:
@@ -363,7 +461,9 @@ async def main():
 
     print("\n" + "=" * 65)
     print(" PIPELINE EXECUTION COMPLETED")
-    print("=" * 65 + "\n")
+    print("=" * 65)
+    async with get_db_context() as db:
+        await display_status_table(db)
 
 
 if __name__ == "__main__":

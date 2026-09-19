@@ -1,16 +1,13 @@
 """
 Unit tests for VideoJob models and validation schemas.
 """
-import pytest
-from pydantic import ValidationError
 from datetime import datetime, timezone
+import pytest
 
 from app.models.video import (
     JobStatus,
-    ScanRequest,
-    UpdateTitleRequest,
+    VideoJob,
     VideoJobSchema,
-    VideoJobPublic,
 )
 
 
@@ -24,26 +21,25 @@ def test_job_status_enum_values():
     assert JobStatus.FAILED.value == "FAILED"
 
 
-def test_scan_request_validation():
-    """Verify folder_id cannot be empty or whitespace."""
-    req = ScanRequest(folder_id="  abc123folder  ")
-    assert req.folder_id == "abc123folder"
+def test_video_job_orm_instantiation():
+    """Verify VideoJob ORM model defaults and attributes."""
+    job = VideoJob(
+        drive_file_id="drive-999",
+        file_name="intro.mp4",
+        full_path="Drive/Tutorials/intro.mp4",
+        status=JobStatus.PENDING.value,
+    )
+    assert job.drive_file_id == "drive-999"
+    assert job.file_name == "intro.mp4"
+    assert job.status == "PENDING"
+    assert job.youtube_url is None
 
-    with pytest.raises(ValidationError):
-        ScanRequest(folder_id="   ")
-
-
-def test_update_title_request_validation():
-    """Verify title update validation."""
-    req = UpdateTitleRequest(title="  New Video Title  ")
-    assert req.title == "New Video Title"
-
-    with pytest.raises(ValidationError):
-        UpdateTitleRequest(title="")
+    job.youtube_video_id = "abc123vid"
+    assert job.youtube_url == "https://www.youtube.com/watch?v=abc123vid"
 
 
 def test_video_job_schema_youtube_url_computation():
-    """Verify youtube_url computed property."""
+    """Verify youtube_url computed property in VideoJobSchema."""
     now = datetime.now(timezone.utc)
     job_with_id = VideoJobSchema(
         id="test-uuid",

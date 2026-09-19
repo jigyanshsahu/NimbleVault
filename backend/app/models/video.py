@@ -81,11 +81,11 @@ class VideoJob(Base):
 
 # ── Pydantic Schemas ───────────────────────────────────────────────────────────
 
-from pydantic import BaseModel, ConfigDict, computed_field, field_validator  # noqa: E402
+from pydantic import BaseModel, ConfigDict, computed_field  # noqa: E402
 
 
 class VideoJobSchema(BaseModel):
-    """Full read-only representation returned by the API."""
+    """Read-only data validation and serialization schema for VideoJob."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -106,33 +106,3 @@ class VideoJobSchema(BaseModel):
         if self.youtube_video_id:
             return f"https://www.youtube.com/watch?v={self.youtube_video_id}"
         return None
-
-
-class VideoJobPublic(VideoJobSchema):
-    """Schema with youtube_url injected for frontend consumption."""
-
-    @classmethod
-    def from_orm_with_url(cls, obj: VideoJob) -> "VideoJobPublic":
-        return cls.model_validate(obj)
-
-
-class ScanRequest(BaseModel):
-    folder_id: str
-
-    @field_validator("folder_id")
-    @classmethod
-    def folder_id_not_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("folder_id must not be empty")
-        return v.strip()
-
-
-class UpdateTitleRequest(BaseModel):
-    title: str
-
-    @field_validator("title")
-    @classmethod
-    def title_not_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("title must not be empty")
-        return v.strip()
