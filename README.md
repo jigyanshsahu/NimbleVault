@@ -206,13 +206,13 @@ python scripts/demo.py
 ### Option 2: Run End-to-End Live Pipeline
 Execute the full automated workflow on a Google Drive folder:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID>
 ```
 
 ### Option 3: Dry-Run Mode (Safe Testing)
 Downloads real files from Google Drive, invokes Gemini AI for contextual titling, updates the database, and simulates YouTube upload without consuming quota:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --dry-run
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --dry-run
 ```
 
 ### Option 4: Inspect Tracked Video Jobs & Audit YouTube Liveness
@@ -230,7 +230,7 @@ python scripts/run_pipeline.py --sync
 ### Option 6: Scan-Only Mode
 Index new videos from Google Drive into the database without triggering downloads or uploads:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --scan-only
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --scan-only
 ```
 
 ### Option 6: Batch Process Queued Jobs
@@ -242,7 +242,7 @@ python scripts/run_pipeline.py --batch
 ### Option 7: Force Re-processing
 Reset all existing database jobs to `PENDING` and re-execute:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --force
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --force
 ```
 
 ---
