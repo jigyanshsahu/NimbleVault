@@ -1,0 +1,55 @@
+"""
+NimbleVault – Application Configuration
+Loads all settings from environment variables via pydantic-settings.
+"""
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # ── Application ────────────────────────────────────────────────────────────
+    APP_NAME: str = "NimbleVault"
+    DEBUG: bool = False
+
+    # ── Database ───────────────────────────────────────────────────────────────
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/nimblevault"
+
+    # ── Google / Drive ─────────────────────────────────────────────────────────
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = "service_account.json"
+    GOOGLE_DRIVE_SCOPES: list[str] = [
+        "https://www.googleapis.com/auth/drive.readonly",
+    ]
+
+    # ── YouTube ────────────────────────────────────────────────────────────────
+    YOUTUBE_SCOPES: list[str] = [
+        "https://www.googleapis.com/auth/youtube.upload",
+    ]
+    YOUTUBE_CLIENT_SECRETS_JSON: str = "client_secrets.json"
+    YOUTUBE_TOKEN_JSON: str = "youtube_token.json"
+    YOUTUBE_VIDEO_CATEGORY_ID: str = "22"   # "People & Blogs"
+    YOUTUBE_PRIVACY_STATUS: str = "private"  # private | unlisted | public
+
+    # ── Gemini ─────────────────────────────────────────────────────────────────
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # ── Local Storage ──────────────────────────────────────────────────────────
+    TEMP_DOWNLOAD_DIR: str = "/tmp/nimblevault_downloads"
+
+    # ── CORS ───────────────────────────────────────────────────────────────────
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
