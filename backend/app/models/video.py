@@ -30,7 +30,7 @@ class VideoJob(Base):
     __tablename__ = "video_jobs"
 
     id: str = Column(
-        UUID(as_uuid=False),
+        String(36).with_variant(UUID(as_uuid=False), "postgresql"),
         primary_key=True,
         default=lambda: str(uuid.uuid4()),
         nullable=False,
@@ -63,6 +63,12 @@ class VideoJob(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    @property
+    def youtube_url(self) -> str | None:
+        if self.youtube_video_id:
+            return f"https://www.youtube.com/watch?v={self.youtube_video_id}"
+        return None
 
     # Composite index – common query pattern
     __table_args__ = (

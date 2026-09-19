@@ -90,9 +90,10 @@ class DriveService:
         """
         Recursively walk *folder_id* and every sub-folder, collecting
         all video files along with their virtual Drive path string.
+        Guards against cyclic structures and isolates subfolder permission errors.
         """
         return await asyncio.to_thread(
-            self._list_videos_sync, folder_id, parent_path
+            self._list_videos_sync, folder_id, parent_path, set()
         )
 
     async def download_file(
@@ -101,7 +102,7 @@ class DriveService:
         destination: Path,
     ) -> Path:
         """
-        Stream-download a Drive file to *destination*.
+        Stream-download a Drive file to *destination* using 8MB chunks with exponential backoff.
         Returns the destination path on success.
         """
         return await asyncio.to_thread(
@@ -114,24 +115,37 @@ class DriveService:
         self,
         folder_id: str,
         current_path: str,
+        visited_folder_ids: set[str] | None = None,
     ) -> list[DriveFile]:
+        if visited_folder_ids is None:
+            visited_folder_ids = set()
+
+        if folder_id in visited_folder_ids:
+            logger.warning("Cyclic folder reference detected for folder_id: %s (path: %s). Skipping.", folder_id, current_path)
+            return []
+
+        visited_folder_ids.add(folder_id)
         results: list[DriveFile] = []
         page_token: str | None = None
 
         while True:
             query = f"'{folder_id}' in parents and trashed = false"
-            response = (
-                self._service.files()
-                .list(
-                    q=query,
-                    pageSize=200,
-                    fields="nextPageToken, files(id, name, mimeType, size)",
-                    pageToken=page_token,
-                    supportsAllDrives=True,
-                    includeItemsFromAllDrives=True,
+            try:
+                response = (
+                    self._service.files()
+                    .list(
+                        q=query,
+                        pageSize=1000,
+                        fields="nextPageToken, files(id, name, mimeType, size)",
+                        pageToken=page_token,
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    )
+                    .execute()
                 )
-                .execute()
-            )
+            except HttpError as exc:
+                logger.error("Failed to query Google Drive folder '%s' (path: %s): %s", folder_id, current_path, exc)
+                break
 
             for item in response.get("files", []):
                 item_id: str = item["id"]
@@ -140,10 +154,15 @@ class DriveService:
                 item_path = f"{current_path}/{item_name}"
 
                 if mime == "application/vnd.google-apps.folder":
-                    # Recurse into sub-folder
-                    results.extend(
-                        self._list_videos_sync(item_id, item_path)
-                    )
+                    # Recurse into sub-folder with fault isolation
+                    try:
+                        sub_results = self._list_videos_sync(item_id, item_path, visited_folder_ids)
+                        results.extend(sub_results)
+                    except Exception as sub_exc:
+                        logger.warning(
+                            "Failed to inspect subfolder '%s' (%s): %s. Continuing traversal.",
+                            item_path, item_id, sub_exc
+                        )
                 elif is_video_file(item_name, mime):
                     results.append(
                         DriveFile(
@@ -166,29 +185,48 @@ class DriveService:
         file_id: str,
         destination: Path,
     ) -> Path:
-        destination.parent.mkdir(parents=True, exist_ok=True)
+        import time
 
+        destination.parent.mkdir(parents=True, exist_ok=True)
         request = self._service.files().get_media(fileId=file_id, supportsAllDrives=True)
         fh = io.FileIO(str(destination), "wb")
 
+        max_retries = 5
+        chunk_size = 8 * 1024 * 1024  # 8 MB chunks
+
         try:
-            downloader = MediaIoBaseDownload(fh, request, chunksize=8 * 1024 * 1024)
+            downloader = MediaIoBaseDownload(fh, request, chunksize=chunk_size)
             done = False
             while not done:
-                status, done = downloader.next_chunk()
-                if status:
-                    pct = int(status.progress() * 100)
-                    logger.info(
-                        "Downloading %s – %d%%", destination.name, pct
-                    )
-        except HttpError as exc:
+                retry_count = 0
+                while True:
+                    try:
+                        status, done = downloader.next_chunk()
+                        if status:
+                            pct = int(status.progress() * 100)
+                            logger.info("Downloading %s – %d%%", destination.name, pct)
+                        break
+                    except (HttpError, IOError, OSError) as exc:
+                        retry_count += 1
+                        if retry_count > max_retries:
+                            raise RuntimeError(
+                                f"Drive download failed for {file_id} after {max_retries} retries: {exc}"
+                            ) from exc
+                        backoff = 2 ** retry_count
+                        logger.warning(
+                            "Transient error downloading chunk (%s). Retrying in %ds (attempt %d/%d)...",
+                            exc, backoff, retry_count, max_retries
+                        )
+                        time.sleep(backoff)
+        except Exception as exc:
             fh.close()
             destination.unlink(missing_ok=True)
             raise RuntimeError(
                 f"Drive download failed for {file_id}: {exc}"
             ) from exc
         finally:
-            fh.close()
+            if not fh.closed:
+                fh.close()
 
         logger.info("Download complete → %s", destination)
         return destination

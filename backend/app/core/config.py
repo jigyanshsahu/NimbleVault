@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # ── Database ───────────────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/nimblevault"
+    # Supports SQLite (zero-setup local execution) and PostgreSQL (production asyncpg)
+    DATABASE_URL: str = "sqlite+aiosqlite:///nimblevault.db"
 
     # ── Google / Drive ─────────────────────────────────────────────────────────
     GOOGLE_SERVICE_ACCOUNT_JSON: str = "service_account.json"

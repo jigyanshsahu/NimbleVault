@@ -272,14 +272,43 @@ async def main():
         action="store_true",
         help="Force re-processing of all video files in folder (resets existing jobs to PENDING)",
     )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run the zero-credential interactive reviewer demo across all 4 rubric scenarios",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Display the current status and YouTube URLs of all tracked video jobs in the database",
+    )
 
     args = parser.parse_args()
+
+    if args.demo:
+        from scripts.demo import run_demo
+        run_demo()
+        return
 
     print("\n" + "=" * 65)
     print(" NIMBLEVAULT - AI-POWERED CONTENT HANDLER PIPELINE")
     print("=" * 65)
 
     await ensure_database()
+
+    if args.status:
+        async with get_db_context() as db:
+            res = await db.execute(select(VideoJob).order_by(VideoJob.created_at.desc()))
+            jobs = res.scalars().all()
+            print(f"\nTracked Video Jobs in Database ({len(jobs)} total):")
+            print("-" * 75)
+            print(f"{'Status':<13} | {'File Name':<32} | {'YouTube / Title'}")
+            print("-" * 75)
+            for j in jobs:
+                detail = j.youtube_url or j.generated_title or "(pending metadata)"
+                print(f"{j.status:<13} | {j.file_name[:30]:<32} | {detail}")
+            print("-" * 75 + "\n")
+        return
 
     if args.force:
         async with get_db_context() as db:

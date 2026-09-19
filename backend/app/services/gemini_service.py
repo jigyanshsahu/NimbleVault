@@ -57,13 +57,20 @@ class GeminiService:
     """Wraps the google-genai SDK to generate YouTube metadata from Drive paths."""
 
     def __init__(self) -> None:
-        self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        if settings.GEMINI_API_KEY:
+            self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        else:
+            self._client = None
 
     async def generate_metadata(self, full_path: str) -> VideoMetadata:
         """
         Asynchronously generate full YouTube metadata (title, description, tags, category)
         from a Google Drive file route.
         """
+        if not self._client or not settings.GEMINI_API_KEY:
+            logger.info("No Gemini API key configured. Using deterministic fallback metadata engine for '%s'.", full_path)
+            return self._fallback_metadata(full_path)
+
         prompt = f"Google Drive File Route: {full_path}"
 
         try:
