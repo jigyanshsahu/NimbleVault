@@ -1,246 +1,905 @@
-# 🎈 NimbleVault for 5-Year-Olds: The Super-Easy Setup & Run Guide (`kid.md`)
+# 🎈 NimbleVault: Super-Easy Setup & Run Guide (`kid.md`)
 
-Welcome! This guide is written so simply that **anyone** (even a 5-year-old!) can set up the APIs and run NimbleVault like a champion! 🚀
+Welcome! This guide is written so simply that **anyone who can read
+documentation can set up, test, and run NimbleVault**. 🚀
 
----
+> **Important:** Follow the steps in order. Step 0 prepares your
+> computer and installs the project. The later steps connect Google
+> Drive, Gemini AI, and YouTube.
 
-## 🧸 Level 1: What is NimbleVault? (The 5-Year-Old Toy Box Story)
+------------------------------------------------------------------------
 
-Imagine you have a **toy box** full of video tapes:
-1. 📁 **The Toy Box** is **Google Drive**. It holds all your video files inside folders.
-2. 🤖 **The Super-Smart Robot** is **NimbleVault + Google Gemini AI**. The robot opens the toy box, picks up each video, and writes a super cool, smart title on it with shiny stickers (tags and categories)!
-3. 📺 **The TV Station** is **YouTube**. The robot puts your video up on YouTube so the world (or just you) can watch it!
-4. 🧠 **The Robot's Notebook** is a small database (**SQLite**). The robot writes down every video it already uploaded so it never makes duplicate copies or forgets anything!
+## 🧸 Level 1: What is NimbleVault?
 
----
+Imagine you have a **toy box full of video tapes**:
 
-## 🎮 Level 2: What is NimbleVault? (The 10-Year-Old YouTube Studio Bot)
+1.  📁 **The Toy Box = Google Drive**\
+    It holds your video files inside folders.
 
-Think of NimbleVault like an **automated redstone farm in Minecraft**, but built for YouTube channels! 🕹️
+2.  🤖 **The Super-Smart Robot = NimbleVault + Google Gemini AI**\
+    The robot finds your videos and generates useful YouTube metadata
+    such as titles, descriptions, hashtags/tags, and categories from the
+    video's Drive path and context.
 
-If you run a YouTube channel, doing all this by hand is super slow and boring:
-- Clicking and downloading 20 videos from Google Drive.
-- Brainstorming titles, typing descriptions, guessing hashtags, and picking categories.
-- Waiting for YouTube upload progress bars.
-- Keeping a spreadsheet so you don't accidentally upload the same video twice.
+3.  📺 **The TV Station = YouTube**\
+    The robot uploads your videos to your YouTube channel.
 
-**NimbleVault is an automated Python bot that runs the whole studio for you:**
+4.  🧠 **The Robot's Notebook = SQLite**\
+    The robot records each video's state so repeated runs do not
+    normally upload the same Drive file again.
 
-| Step | How It Works in Real Life | The Cool Tech Behind It |
-| :--- | :--- | :--- |
-| **1. The Scout** | Dives through all your Google Drive folders (even if nested 10 folders deep) and finds every single video file (`.mp4`, `.mov`, `.mkv`). | **Google Drive API v3** with recursive traversal and cycle protection |
-| **2. The AI Brain** | Reads the file path (e.g. `Drive/Gaming/Minecraft/Speedrun_v2.mp4`) and generates a catchy YouTube title (`"Minecraft Gaming: Speedrun (v2)"`), 3 SEO hashtags (`#Gaming #Minecraft #Speedrun`), and picks the YouTube Category (**Gaming / ID 20**). | **Google Gemini AI (`gemini-3.5-flash-lite`)** + Offline regex fallback |
-| **3. The Rocket** | Uploads the video straight to YouTube. Instead of eating all your computer's RAM, it feeds the video to YouTube in **8 MB slices** (chunks) with auto-retry if your Wi-Fi drops. | **YouTube Data API v3** Resumable Upload Session |
-| **4. The Save File** | Remembers every video's status so it never duplicates. If a video is deleted on YouTube, it automatically detects it and re-uploads! | **Async SQLite (`aiosqlite`)** State Machine |
+------------------------------------------------------------------------
 
----
+## 🎮 Level 2: What does NimbleVault do?
 
-## ⚡ Step 0: The 10-Second Instant Demo (NO Setup Required!)
+If you run a YouTube channel, doing everything manually can be slow:
 
-If you just want to see the robot in action right now **without** creating any Google or YouTube accounts:
+-   Finding videos in Google Drive.
+-   Downloading videos to your computer.
+-   Creating titles and descriptions.
+-   Choosing tags/categories.
+-   Uploading videos to YouTube.
+-   Tracking which videos were already processed.
 
-1. Open your terminal in the `backend` folder.
-2. Run this single command:
-   ```bash
-   python scripts/demo.py
-   ```
-*(Or if you haven't activated your virtual environment: `.\venv\Scripts\python scripts/demo.py` on Windows!)*
+**NimbleVault automates this workflow with Python.**
 
-🎉 **That's it!** You'll see the robot simulate all 4 test scenarios right before your eyes!
+  -----------------------------------------------------------------------
+  Step                    What the robot does     Technology
+  ----------------------- ----------------------- -----------------------
+  **1. Scout**            Recursively searches    Google Drive API v3
+                          Google Drive folders    
+                          and finds supported     
+                          video files.            
 
----
+  **2. AI Brain**         Uses the file's Drive   Google Gemini AI +
+                          path/context to         deterministic fallback
+                          generate YouTube        
+                          metadata and a          
+                          category.               
 
-## 🧩 Setting Up the 3 Magic Keys (APIs)
+  **3. Rocket**           Uploads videos to       YouTube Data API v3
+                          YouTube using resumable 
+                          uploads with retry      
+                          handling.               
 
-To connect NimbleVault to your **real** Google Drive and **real** YouTube channel, you only need to collect **3 Magic Keys**, like plugging in 3 Lego blocks!
+  **4. Save File**        Stores processing state SQLite + `aiosqlite`
+                          in SQLite and           
+                          reconciles deleted      
+                          YouTube videos.         
+  -----------------------------------------------------------------------
 
+------------------------------------------------------------------------
+
+# 🛠️ Step 0: Setup & Installation
+
+**Do this first.** You do not need Google API credentials yet just to
+install the project and run the demo.
+
+## 0.1 Prerequisites
+
+Install these on your computer:
+
+-   **Python 3.10 or newer**
+-   **Git**
+-   A copy/clone of the NimbleVault project
+
+The project uses a local SQLite database, so you do **not** need to
+install a separate database server.
+
+------------------------------------------------------------------------
+
+## 0.2 Open the project
+
+Open a terminal inside the NimbleVault project.
+
+Your project should look roughly like this:
+
+``` text
+nimblevault/
+└── backend/
+    ├── app/
+    ├── scripts/
+    ├── requirements.txt
+    └── .env.example
 ```
- ┌─────────────────┐       ┌──────────────────────┐       ┌────────────────────┐
- │  Magic Key 1    │       │     Magic Key 2      │       │    Magic Key 3     │
- │  The AI Brain   │       │   The Toy Box Key    │       │     The TV Key     │
- │  (Gemini API)   │       │ (Drive Service Acct) │       │  (YouTube OAuth)   │
- └────────┬────────┘       └──────────┬───────────┘       └─────────┬──────────┘
-          │                           │                             │
-          ▼                           ▼                             ▼
-   Paste in .env             Save as JSON file              Save as JSON file
- (GEMINI_API_KEY)         (service_account.json)          (client_secrets.json)
+
+Move into the backend folder:
+
+``` bash
+cd backend
 ```
 
----
+------------------------------------------------------------------------
 
-### 🧩 Magic Key 1: The AI Brain (Google Gemini AI)
-*Time needed: 60 seconds • 100% Free*
+## 0.3 Create a Python virtual environment
 
-1. Open your browser and go to: **[Google AI Studio](https://aistudio.google.com/)**
-2. Sign in with any Google account.
-3. Click the big blue button: **"Get API key"** (top left).
-4. Click **"Create API key"** $\rightarrow$ select any project $\rightarrow$ copy the key! (It looks like `AIzaSy...`).
-5. Open your `backend/.env` file with any text editor (Notepad, VS Code).
-6. Find the line that says `GEMINI_API_KEY=` and paste your key there:
-   ```env
-   GEMINI_API_KEY=AIzaSyYourSecretKeyHere12345
-   ```
-✅ **Lego Block 1 is plugged in!**
+Run:
 
----
+``` bash
+python -m venv venv
+```
 
-### 🧩 Magic Key 2: The Toy Box Key (Google Drive)
-*Time needed: 2 minutes • 100% Free*
+This creates a private Python environment for NimbleVault.
 
-We need to make a little "Robot Email" that has permission to peek into your Google Drive folder.
+### Windows PowerShell
 
-1. Open your browser and go to: **[Google Cloud Console](https://console.cloud.google.com/)**
-2. Create a new project (or pick an existing one) named `NimbleVault`.
-3. **Turn on Google Drive**:
-   - In the top search bar, type `Google Drive API`.
-   - Click on it and click the blue **"ENABLE"** button.
-4. **Create the Robot (Service Account)**:
-   - Go to **APIs & Services** $\rightarrow$ **Credentials** (left menu).
-   - Click **"+ CREATE CREDENTIALS"** (at top) $\rightarrow$ select **"Service account"**.
-   - Type a name like `drive-robot` $\rightarrow$ click **"CREATE AND CONTINUE"** $\rightarrow$ click **"DONE"**.
-5. **Download the Robot's Key**:
-   - On the Credentials page, look under **"Service Accounts"** and click on your new robot's email.
-   - Click the **"KEYS"** tab (near the top).
-   - Click **"ADD KEY"** $\rightarrow$ **"Create new key"**.
-   - Choose **JSON** $\rightarrow$ click **"CREATE"**.
-   - A file will download to your computer!
-6. **Put it in the backend folder**:
-   - Rename that downloaded file to: `service_account.json`
-   - Move it directly into your `nimblevault/backend/` folder.
-7. ⭐ **CRITICAL STEP (Don't skip!): Give the robot the key to your folder**:
-   - Open that `service_account.json` in Notepad.
-   - Look for `"client_email": "drive-robot@your-project.iam.gserviceaccount.com"` and copy that email address.
-   - Open your Google Drive in your web browser.
-   - Right-click the folder you want to upload videos from $\rightarrow$ click **Share**.
-   - Paste the robot's email address and make sure its role is **Viewer**! Click Send.
+``` powershell
+.\venv\Scripts\Activate.ps1
+```
 
-✅ **Lego Block 2 is plugged in!**
+If PowerShell blocks the activation script, you can run the project
+using the Python executable inside `venv` directly, for example:
 
----
+``` powershell
+.\venv\Scripts\python scripts/demo.py
+```
 
-### 🧩 Magic Key 3: The TV Key (YouTube Uploads)
-*Time needed: 2 minutes • 100% Free*
+### Linux / macOS
 
-Now we give the robot permission to upload videos to your YouTube channel!
+``` bash
+source venv/bin/activate
+```
 
-1. In that same **[Google Cloud Console](https://console.cloud.google.com/)**:
-2. **Turn on YouTube**:
-   - In the top search bar, type `YouTube Data API v3`.
-   - Click on it and click the blue **"ENABLE"** button.
-3. **Configure Consent Screen** (if you haven't yet):
-   - Go to **APIs & Services** $\rightarrow$ **OAuth consent screen**.
-   - Choose **External** $\rightarrow$ click **Create**.
-   - Type App Name: `NimbleVault` $\rightarrow$ enter your email address.
-   - Click **Save and Continue** until finished.
-   - In **Test users**, click **"+ ADD USERS"** and add your own Google email!
-4. **Create the Client ID**:
-   - Go to **APIs & Services** $\rightarrow$ **Credentials**.
-   - Click **"+ CREATE CREDENTIALS"** $\rightarrow$ choose **"OAuth client ID"**.
-   - ⚠️ **IMPORTANT**: Under **Application type**, select **Desktop app**! (Do NOT choose Web).
-   - Name it `youtube-uploader` $\rightarrow$ click **"CREATE"**.
-5. **Download the Client Secrets file**:
-   - A box will pop up. Click **"DOWNLOAD JSON"** (or click the little download arrow next to it).
-   - Rename that downloaded file to: `client_secrets.json`
-   - Move it directly into your `nimblevault/backend/` folder.
-6. **Log in to YouTube (One-Click!)**:
-   - In your terminal inside `backend/`, run:
-     ```bash
-     python scripts/auth_youtube.py
-     ```
-   - A web browser tab will automatically pop open!
-   - Click your Google account $\rightarrow$ click **Continue** / **Allow**.
-   - The terminal will say `[OK] OAuth token successfully saved to: youtube_token.json`!
+When activation works, your terminal normally shows something like:
 
-✅ **Lego Block 3 is plugged in! You are 100% ready!**
+``` text
+(venv)
+```
 
----
+------------------------------------------------------------------------
 
-## 🚦 Step 3: Check If Everything Works (Pre-Flight)
+## 0.4 Install the project dependencies
 
-Before you fly your spaceship, test your dashboard with this command:
+Run:
 
-```bash
+``` bash
+pip install -r requirements.txt
+```
+
+Wait until installation finishes.
+
+------------------------------------------------------------------------
+
+## 0.5 Create your `.env` file
+
+NimbleVault uses SQLite locally and reads configuration from `.env`.
+
+### Windows PowerShell
+
+``` powershell
+Copy-Item .env.example .env
+```
+
+### Linux / macOS
+
+``` bash
+cp .env.example .env
+```
+
+The important settings are:
+
+``` env
+DATABASE_URL=sqlite+aiosqlite:///nimblevault.db
+
+GOOGLE_SERVICE_ACCOUNT_JSON=service_account.json
+
+YOUTUBE_CLIENT_SECRETS_JSON=client_secrets.json
+YOUTUBE_TOKEN_JSON=youtube_token.json
+
+YOUTUBE_PRIVACY_STATUS=private
+YOUTUBE_VIDEO_CATEGORY_ID=22
+
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+TEMP_DOWNLOAD_DIR=downloads/temp
+```
+
+For the **demo**, you can leave the API credentials unconfigured.
+
+------------------------------------------------------------------------
+
+## 0.6 Run the zero-credential demo
+
+You can now test NimbleVault without connecting Google Drive, Gemini, or
+YouTube.
+
+From the `backend` folder, run:
+
+``` bash
+python scripts/run_pipeline.py --demo
+```
+
+Or:
+
+``` bash
+python scripts/demo.py
+```
+
+If your virtual environment is not activated on Windows:
+
+``` powershell
+.\venv\Scripts\python scripts/demo.py
+```
+
+🎉 If the demo runs successfully, your local Python installation,
+dependencies, and project setup are working.
+
+> **This is the safest first test.** Do this before setting up the real
+> Google APIs.
+
+------------------------------------------------------------------------
+
+# 🔑 Step 1: Connect the 3 Magic Keys
+
+To connect NimbleVault to your **real Google Drive, Gemini AI, and
+YouTube channel**, configure these three services.
+
+``` text
+┌─────────────────────┐
+│     Magic Key 1     │
+│      Gemini AI      │
+│    GEMINI_API_KEY   │
+└──────────┬──────────┘
+           │
+           ▼
+       .env file
+
+
+┌─────────────────────┐
+│     Magic Key 2     │
+│    Google Drive     │
+│ service_account.json│
+└──────────┬──────────┘
+           │
+           ▼
+      backend folder
+
+
+┌─────────────────────┐
+│     Magic Key 3     │
+│      YouTube        │
+│ client_secrets.json │
+└──────────┬──────────┘
+           │
+           ▼
+      backend folder
+```
+
+------------------------------------------------------------------------
+
+## 🧩 Magic Key 1: Gemini AI
+
+**Time needed: about 1 minute**
+
+1.  Open Google AI Studio: https://aistudio.google.com/
+
+2.  Sign in with your Google account.
+
+3.  Create an API key.
+
+4.  Copy the key.
+
+5.  Open:
+
+``` text
+backend/.env
+```
+
+6.  Find:
+
+``` env
+GEMINI_API_KEY=
+```
+
+7.  Paste your key:
+
+``` env
+GEMINI_API_KEY=YOUR_REAL_GEMINI_API_KEY
+```
+
+Do not share this key publicly.
+
+✅ **Magic Key 1 is ready.**
+
+------------------------------------------------------------------------
+
+# 🧩 Magic Key 2: Google Drive
+
+NimbleVault needs permission to read the Drive folder containing your
+videos.
+
+## 2.1 Create a Google Cloud project
+
+1.  Open: https://console.cloud.google.com/
+
+2.  Create a new project, or select an existing project.
+
+3.  Give it a name such as:
+
+``` text
+NimbleVault
+```
+
+------------------------------------------------------------------------
+
+## 2.2 Enable Google Drive API
+
+1.  In Google Cloud Console, search for:
+
+``` text
+Google Drive API
+```
+
+2.  Open it.
+
+3.  Click **Enable**.
+
+------------------------------------------------------------------------
+
+## 2.3 Create a Service Account
+
+1.  Go to:
+
+**APIs & Services → Credentials**
+
+2.  Click:
+
+**+ CREATE CREDENTIALS**
+
+3.  Select:
+
+**Service account**
+
+4.  Give it a name such as:
+
+``` text
+drive-robot
+```
+
+5.  Click **Create and Continue**.
+
+6.  Finish the creation process.
+
+------------------------------------------------------------------------
+
+## 2.4 Download the Service Account key
+
+1.  On the Credentials page, find your new service account.
+
+2.  Open it.
+
+3.  Go to the **Keys** tab.
+
+4.  Click:
+
+**ADD KEY → Create new key**
+
+5.  Select:
+
+**JSON**
+
+6.  Click **Create**.
+
+A JSON file will download.
+
+------------------------------------------------------------------------
+
+## 2.5 Put the key into the project
+
+Rename the downloaded file to:
+
+``` text
+service_account.json
+```
+
+Put it directly inside:
+
+``` text
+nimblevault/backend/
+```
+
+So you have:
+
+``` text
+backend/
+├── service_account.json
+├── requirements.txt
+├── .env
+└── ...
+```
+
+⚠️ **Never upload `service_account.json` to GitHub.**
+
+------------------------------------------------------------------------
+
+## 2.6 Give the Service Account access to your Drive folder
+
+This is very important.
+
+1.  Open `service_account.json` with a text editor.
+
+2.  Find:
+
+``` json
+"client_email": "..."
+```
+
+3.  Copy the email address.
+
+4.  Open Google Drive.
+
+5.  Find the folder containing the videos you want NimbleVault to
+    process.
+
+6.  Right-click the folder.
+
+7.  Click **Share**.
+
+8.  Paste the Service Account email.
+
+9.  Give it **Viewer** access.
+
+10. Click **Send**.
+
+The robot can now read that folder.
+
+✅ **Magic Key 2 is ready.**
+
+------------------------------------------------------------------------
+
+# 🧩 Magic Key 3: YouTube
+
+Now give NimbleVault permission to upload videos to your YouTube
+channel.
+
+## 3.1 Enable YouTube Data API v3
+
+In the same Google Cloud project:
+
+1.  Open:
+
+**APIs & Services**
+
+2.  Search for:
+
+``` text
+YouTube Data API v3
+```
+
+3.  Open it.
+
+4.  Click **Enable**.
+
+------------------------------------------------------------------------
+
+## 3.2 Configure the OAuth consent screen
+
+If your project has not configured OAuth yet:
+
+1.  Go to the Google Cloud OAuth consent screen area.
+
+2.  Create/configure the consent screen.
+
+3.  Use:
+
+``` text
+App name: NimbleVault
+```
+
+4.  Provide the required contact information.
+
+5.  If the application is configured as **External**, add your Google
+    account as a **test user** when Google Cloud asks for test users.
+
+> Google Cloud's interface can change over time. Follow the current
+> labels shown in the console.
+
+------------------------------------------------------------------------
+
+## 3.3 Create the YouTube OAuth client
+
+1.  Go to:
+
+**APIs & Services → Credentials**
+
+2.  Click:
+
+**+ CREATE CREDENTIALS**
+
+3.  Select:
+
+**OAuth client ID**
+
+4.  For application type, choose:
+
+**Desktop app**
+
+5.  Give it a name such as:
+
+``` text
+youtube-uploader
+```
+
+6.  Click **Create**.
+
+------------------------------------------------------------------------
+
+## 3.4 Download the client secrets
+
+Download the OAuth client JSON file.
+
+Rename it:
+
+``` text
+client_secrets.json
+```
+
+Put it inside:
+
+``` text
+nimblevault/backend/
+```
+
+⚠️ **Never publish this credential file.**
+
+------------------------------------------------------------------------
+
+## 3.5 Log in to YouTube
+
+From the `backend` folder, run:
+
+``` bash
+python scripts/auth_youtube.py
+```
+
+A browser window should open.
+
+1.  Select your Google account.
+2.  Continue through the Google permission screen.
+3.  Allow the requested YouTube access.
+
+After successful authorization, NimbleVault saves:
+
+``` text
+youtube_token.json
+```
+
+This token is used for later YouTube API requests.
+
+⚠️ Keep `youtube_token.json` private.
+
+✅ **Magic Key 3 is ready.**
+
+------------------------------------------------------------------------
+
+# 🚦 Step 2: Check Everything Before a Real Upload
+
+Before uploading real videos, run:
+
+``` bash
 python scripts/run_pipeline.py --status
 ```
 
-Look for the 4 green checks:
+The command checks the application's current state and configuration.
+
+You want the required services to report as working, for example:
+
+``` text
+NIMBLEVAULT - PRE-FLIGHT SYSTEM READINESS CHECK
+
+[OK] Database: SQLite engine active & schema verified.
+[OK] Google Drive: Service Account valid
+[OK] YouTube API: OAuth2 credentials active
+[OK] Gemini AI: Gemini API key active
 ```
-=================================================================
- NIMBLEVAULT - PRE-FLIGHT SYSTEM READINESS CHECK
-=================================================================
-  [OK]   Database: SQLite engine active & schema verified.
-  [OK]   Google Drive: Service Account valid (drive-robot@...)
-  [OK]   YouTube API: OAuth2 credentials active (ready for live uploads)
-  [OK]   Gemini AI: Gemini API key active (AQ.Ab8..., model: gemini-3.5-flash-lite)
-=================================================================
-```
 
-If you see all four `[OK]` lines, give yourself a high-five! ✋ Everything is perfect!
+If something reports an error, fix that item before running a live
+upload.
 
----
+------------------------------------------------------------------------
 
-## 🎮 Step 4: Run the Robot!
+# 🎮 Step 3: Run NimbleVault
 
-### 1. Test Safely First (Dry-Run Mode)
-This downloads your videos, uses Gemini AI to give them amazing titles, but **pretends** to upload to YouTube so you don't use up your daily YouTube limit:
-```bash
+## 3.1 Test safely first: Dry Run
+
+A dry run is the safest way to test the real Drive workflow.
+
+Run:
+
+``` bash
 python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID --dry-run
 ```
 
-### 2. Live Upload to Real YouTube!
-When you're ready to put your videos live on your YouTube channel:
-```bash
+Replace:
+
+``` text
+YOUR_FOLDER_ID
+```
+
+with your Google Drive folder ID.
+
+For example, if your Drive URL looks like:
+
+``` text
+https://drive.google.com/drive/folders/1AbCdEfGh123
+```
+
+the folder ID is:
+
+``` text
+1AbCdEfGh123
+```
+
+The dry run can process the Drive side and metadata generation while
+simulating the YouTube upload instead of performing the real upload.
+
+------------------------------------------------------------------------
+
+## 3.2 Upload to YouTube for real
+
+When you are ready for a real upload:
+
+``` bash
 python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID
 ```
-*(Replace `YOUR_FOLDER_ID` with the folder ID from your Google Drive URL. If you don't specify one, it uses the default assignment folder!)*
 
-### 3. Check What's Uploaded Anytime
-```bash
+NimbleVault will process the selected Drive folder and upload eligible
+videos according to the configured workflow.
+
+The default privacy setting comes from:
+
+``` env
+YOUTUBE_PRIVACY_STATUS=private
+```
+
+So check your `.env` before doing a live run.
+
+------------------------------------------------------------------------
+
+## 3.3 Check the upload status
+
+Run:
+
+``` bash
 python scripts/run_pipeline.py --status
 ```
-It shows a clean table of all videos:
+
+This shows the tracked video jobs and their current state.
+
+A completed job can include information such as:
+
+``` text
+Status       File Name              YouTube Link
+COMPLETED    example_video.mp4      https://youtube.com/watch?v=...
 ```
-Tracked Video Jobs in Database:
-Status           | File Name                 | Route                             | YouTube Link
-----------------------------------------------------------------------------------------------------------------
-COMPLETED        | exploring earth day 2     | ...th2/exploring the earth day 2  | https://youtube.com/watch?v=...
-COMPLETED        | exploring earth day1      | ...th2/exploring earth day1       | https://youtube.com/watch?v=...
+
+------------------------------------------------------------------------
+
+# 🧰 Step 4: Useful Commands
+
+  -------------------------------------------------------------------------------------------------------------
+  What you want to do                 Command
+  ----------------------------------- -------------------------------------------------------------------------
+  Run the zero-credential demo        `python scripts/demo.py`
+
+  Run the demo through the main CLI   `python scripts/run_pipeline.py --demo`
+
+  Check system/status                 `python scripts/run_pipeline.py --status`
+
+  Check YouTube authorization         `python scripts/auth_youtube.py --check`
+
+  Scan/sync Google Drive              `python scripts/run_pipeline.py --sync`
+
+  Safe real-Drive test                `python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID --dry-run`
+
+  Live process a Drive folder         `python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID`
+
+  Scan only, without processing       `python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID --scan-only`
+  uploads                             
+
+  Process pending jobs                `python scripts/run_pipeline.py --batch`
+
+  Force re-processing                 `python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID --force`
+  -------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+# 🧠 How NimbleVault Remembers Videos
+
+NimbleVault uses SQLite to keep track of video jobs.
+
+A simplified state flow is:
+
+``` text
+PENDING
+   ↓
+DOWNLOADING
+   ↓
+TITLING
+   ↓
+UPLOADING
+   ↓
+COMPLETED
 ```
 
----
+If something fails, a job can enter:
 
-## 🎮 The Cheat Sheet (Copy & Paste Commands)
+``` text
+FAILED
+```
 
-| What You Want To Do | Type This Command |
-| :--- | :--- |
-| **Play the fake demo (zero setup)** | `python scripts/demo.py` |
-| **Check if all APIs & logins are happy** | `python scripts/run_pipeline.py --status` |
-| **Verify your YouTube login** | `python scripts/auth_youtube.py --check` |
-| **Scan Google Drive for newly added files** | `python scripts/run_pipeline.py --sync` |
-| **Safe practice run (no real upload)** | `python scripts/run_pipeline.py --dry-run` |
-| **Full live run on your Drive folder** | `python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID>` |
-| **Re-process and re-upload everything** | `python scripts/run_pipeline.py --force` |
+The database also stores information needed for auditing and retrying
+work.
 
----
+This prevents a normal repeated scan from blindly uploading the same
+Drive file again.
 
-## 🩹 Ouchie! What If Something Goes Wrong? (Easy Fixes)
+------------------------------------------------------------------------
 
-### ❓ "It says: Google Drive Access Denied (HTTP 403)"
-- **What happened**: You forgot to invite the robot to your Google Drive folder!
-- **How to fix**: Open your Google Drive folder in your browser, click **Share**, copy the `client_email` from your `service_account.json` file, and paste it with **Viewer** permission.
+# ❤️ Self-Healing: What If a YouTube Video Is Deleted?
 
-### ❓ "It says: YouTube 403 quotaExceeded"
-- **What happened**: Google's free tier only lets you upload around 6 videos per day.
-- **How to fix**: Don't panic! Use `--dry-run` to test your code as much as you want without using quota. The upload quota resets automatically every day at midnight Pacific Time.
+NimbleVault can check whether previously uploaded YouTube videos are
+still available.
 
-### ❓ "I deleted a video on YouTube, will NimbleVault notice?"
-- **What happened**: Yes! NimbleVault has a superpower called **Self-Healing Reconciliation**.
-- **How to fix**: Just run `python scripts/run_pipeline.py --status` or run the pipeline again. It will spot that the video was deleted on YouTube, change its status back to `PENDING`, and re-upload it for you!
+If an uploaded video is later deleted from YouTube:
 
-### ❓ "I renamed a video or moved it into a new folder in Google Drive"
-- **What happened**: NimbleVault automatically detects renames and folder changes!
-- **How to fix**: Just run `python scripts/run_pipeline.py`. It notices the new name, asks Gemini AI for a fresh new title matching the new name, and uploads it cleanly.
+1.  NimbleVault detects that the YouTube video is no longer available.
+2.  The database record is changed back to `PENDING`.
+3.  The stored YouTube video ID is cleared.
+4.  The video becomes eligible for another upload.
 
----
+Run:
 
-🎉 **You are now a certified NimbleVault Master! Have fun automating your videos!** 🚀
+``` bash
+python scripts/run_pipeline.py --status
+```
+
+or run the pipeline/sync again to perform the reconciliation workflow.
+
+------------------------------------------------------------------------
+
+# 📁 Project Structure
+
+Your project should roughly look like this:
+
+``` text
+nimblevault/
+│
+├── README.md
+│
+└── backend/
+    │
+    ├── app/
+    │   ├── core/
+    │   │   ├── config.py
+    │   │   └── database.py
+    │   │
+    │   ├── models/
+    │   │   └── video.py
+    │   │
+    │   └── services/
+    │       ├── drive_service.py
+    │       ├── gemini_service.py
+    │       └── youtube_service.py
+    │
+    ├── scripts/
+    │   ├── run_pipeline.py
+    │   ├── demo.py
+    │   ├── auth_youtube.py
+    │   └── generate_metadata.py
+    │
+    ├── requirements.txt
+    ├── .env.example
+    ├── .env
+    ├── service_account.json
+    ├── client_secrets.json
+    └── youtube_token.json
+```
+
+The credential files and `.env` should remain private and should not be
+committed to a public repository.
+
+------------------------------------------------------------------------
+
+# 🩹 Step 5: Common Problems
+
+## ❓ Google Drive says `403 Access Denied`
+
+### What happened?
+
+The Google Drive Service Account probably does not have access to the
+target folder.
+
+### Fix
+
+1.  Open `service_account.json`.
+2.  Copy the `client_email`.
+3.  Open the target Google Drive folder.
+4.  Click **Share**.
+5.  Add the Service Account email.
+6.  Give it **Viewer** access.
+7.  Run the pipeline again.
+
+------------------------------------------------------------------------
+
+## ❓ YouTube says `403 quotaExceeded`
+
+### What happened?
+
+The YouTube Data API has quota limits.
+
+### Fix
+
+Do not repeatedly perform live uploads while testing.
+
+Use:
+
+``` bash
+python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID --dry-run
+```
+
+for safe testing.
+
+If the live API quota has been exhausted, wait for the applicable quota
+reset or review the quota information for your Google Cloud project.
+
+------------------------------------------------------------------------
+
+## ❓ I deleted a video on YouTube. What happens?
+
+NimbleVault can detect the missing YouTube video during its
+reconciliation process and return the corresponding database job to
+`PENDING`.
+
+Run:
+
+``` bash
+python scripts/run_pipeline.py --status
+```
+
+or run the pipeline again.
+
+------------------------------------------------------------------------
+
+## ❓ I renamed or moved a video in Google Drive. What should I do?
+
+Run the pipeline again:
+
+``` bash
+python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID
+```
+
+NimbleVault scans the Drive hierarchy and uses the available Drive
+path/context when generating metadata.
+
+------------------------------------------------------------------------
+
+# 🏁 Final Checklist
+
+Before a **real** upload, make sure:
+
+-   [ ] Python is installed.
+-   [ ] You created the virtual environment.
+-   [ ] Dependencies are installed.
+-   [ ] `.env` exists.
+-   [ ] Gemini API key is configured if you want Gemini metadata
+    generation.
+-   [ ] Google Drive API is enabled.
+-   [ ] `service_account.json` is inside `backend/`.
+-   [ ] The Service Account can view the target Drive folder.
+-   [ ] YouTube Data API v3 is enabled.
+-   [ ] `client_secrets.json` is inside `backend/`.
+-   [ ] You ran `python scripts/auth_youtube.py`.
+-   [ ] YouTube authorization completed successfully.
+-   [ ] You tested the workflow with `--dry-run`.
+-   [ ] Your YouTube privacy setting in `.env` is what you want.
+-   [ ] You are using the correct Google Drive folder ID.
+
+Then run:
+
+``` bash
+python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID
+```
+
+🎉 **You are ready to run NimbleVault!**
