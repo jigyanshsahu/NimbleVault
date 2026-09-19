@@ -31,7 +31,11 @@ from app.core.database import get_db_context, engine, Base
 from app.models.video import VideoJob, JobStatus
 from app.services.drive_service import DriveService
 from app.services.gemini_service import GeminiService
-from app.services.youtube_service import YouTubeService, is_youtube_authenticated
+from app.services.youtube_service import (
+    YouTubeService,
+    is_youtube_authenticated,
+    is_video_alive_on_youtube,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,12 +80,27 @@ async def scan_and_register_videos(folder_id: str) -> list[VideoJob]:
 
     new_jobs: list[VideoJob] = []
     async with get_db_context() as db:
-        # Check existing drive_file_ids to prevent duplicates
-        result = await db.execute(select(VideoJob.drive_file_id))
-        existing_ids = {row[0] for row in result.fetchall()}
+        # Check existing jobs to prevent duplicates and reconcile state
+        result = await db.execute(select(VideoJob))
+        existing_jobs_map: dict[str, VideoJob] = {
+            j.drive_file_id: j for j in result.scalars().all()
+        }
 
         for df in drive_files:
-            if df.file_id in existing_ids:
+            if df.file_id in existing_jobs_map:
+                existing_job = existing_jobs_map[df.file_id]
+                # Reconcile if marked COMPLETED but deleted on YouTube
+                if existing_job.status == JobStatus.COMPLETED.value and existing_job.youtube_video_id:
+                    if not is_video_alive_on_youtube(existing_job.youtube_video_id):
+                        print(f"  [WARN] Video '{df.file_name}' (ID: {existing_job.youtube_video_id}) was DELETED from YouTube!")
+                        print(f"         Reconciling status to PENDING for re-upload.")
+                        existing_job.status = JobStatus.PENDING.value
+                        existing_job.youtube_video_id = None
+                        existing_job.error_log = "Video was deleted on YouTube. Status reconciled to PENDING."
+                        db.add(existing_job)
+                        new_jobs.append(existing_job)
+                        continue
+
                 print(f"  [INFO] File '{df.file_name}' already indexed in database (skipping).")
                 continue
 
@@ -98,7 +117,7 @@ async def scan_and_register_videos(folder_id: str) -> list[VideoJob]:
         for j in new_jobs:
             await db.refresh(j)
 
-    print(f"\n[OK] Acquisition Summary: {len(new_jobs)} new video job(s) recorded to database.")
+    print(f"\n[OK] Acquisition Summary: {len(new_jobs)} video job(s) queued or reconciled.")
     return new_jobs
 
 
@@ -160,13 +179,15 @@ async def execute_job(job_id: str, dry_run: bool = False):
             await db.commit()
             print(f"\n[TITLING] Generating contextual metadata via Gemini AI ({settings.GEMINI_MODEL})...")
 
+            metadata = await gemini.generate_metadata(job.full_path)
             if not job.generated_title:
-                ai_title = await gemini.generate_title(job.full_path)
-                job.generated_title = ai_title
+                job.generated_title = metadata.title
                 db.add(job)
                 await db.commit()
 
             print(f"[OK] Generated Title: \"{job.generated_title}\"")
+            print(f"[OK] Category:        {metadata.category}")
+            print(f"[OK] Tags:            {', '.join(metadata.tags)}")
 
             # ─────────────────────────────────────────────────────────────
             # 3. Distribution (YouTube API)
@@ -183,9 +204,9 @@ async def execute_job(job_id: str, dry_run: bool = False):
             else:
                 video_id = await youtube.upload_video(
                     file_path=local_path,
-                    title=job.generated_title or job.file_name,
-                    description=f"Automated upload via NimbleVault\nSource: {job.full_path}",
-                    tags=["nimblevault", "automated", "content-handler"],
+                    title=job.generated_title or metadata.title,
+                    description=metadata.description,
+                    tags=metadata.tags,
                 )
                 job.youtube_video_id = video_id
                 print(f"[OK] Video successfully published to YouTube!")

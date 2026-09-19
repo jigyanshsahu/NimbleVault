@@ -22,16 +22,16 @@ settings = get_settings()
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 
 
-def is_youtube_authenticated() -> bool:
+def is_youtube_authenticated(token_path: str | None = None) -> bool:
     """Check whether a valid or refreshable YouTube OAuth token exists."""
     import os
     import json
 
-    token_path = settings.YOUTUBE_TOKEN_JSON
-    if not os.path.exists(token_path):
+    target_path = token_path or get_settings().YOUTUBE_TOKEN_JSON
+    if not os.path.exists(target_path):
         return False
     try:
-        with open(token_path) as fh:
+        with open(target_path) as fh:
             creds = google.oauth2.credentials.Credentials.from_authorized_user_info(
                 json.load(fh), settings.YOUTUBE_SCOPES
             )
@@ -168,3 +168,32 @@ class YouTubeService:
             "Upload complete: https://www.youtube.com/watch?v=%s", video_id
         )
         return video_id
+
+
+def is_video_alive_on_youtube(video_id: str) -> bool:
+    """
+    Check if a video still exists and is accessible on YouTube.
+    Detects whether the video was deleted or removed by the uploader.
+    """
+    import httpx
+
+    if not video_id or video_id.startswith("mock_"):
+        return True
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            resp = client.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            )
+            text = resp.text
+            is_deleted = (
+                "This video has been removed by the uploader" in text
+                or "This video does not exist" in text
+            )
+            return not is_deleted
+    except Exception as exc:
+        logger.warning("Failed to check video availability for %s: %s", video_id, exc)
+        # Default to True on network error to avoid false positive resets
+        return True

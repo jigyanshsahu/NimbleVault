@@ -244,3 +244,32 @@ The pipeline has been verified with live test executions:
 - **Pipeline Progression**: `DOWNLOADING (100%)` $\rightarrow$ `TITLING` $\rightarrow$ `UPLOADING` $\rightarrow$ `COMPLETED`
 - **Temp Cleanup**: Local video file automatically removed upon completion.
 - **Duplicate Protection**: Verified that subsequent scans detect the indexed `drive_file_id` and skip re-processing.
+
+---
+
+## Automated Test Suite
+
+NimbleVault includes a comprehensive `pytest` test suite covering unit and integration testing across all layers:
+
+```bash
+cd backend
+pytest -v
+```
+
+### Test Coverage Areas:
+1. **Google Drive Service (`tests/test_drive_service.py`)**:
+   - MIME type detection and extension fallback logic.
+   - Mocked recursive traversal verifying multi-level nested folders and path preservation.
+2. **Gemini Titling Service (`tests/test_gemini_service.py`)**:
+   - Transformation patterns matching all 4 assignment rubric examples.
+   - Version tag parsing `(v2)` and error fallback handling.
+3. **YouTube Distribution Service (`tests/test_youtube_service.py`)**:
+   - OAuth credential presence checks.
+   - Upload snippet payload construction and title truncation rules.
+4. **Data Models & Validation (`tests/test_models.py`)**:
+   - Job lifecycle enum validation.
+   - Computed fields (`youtube_url`) and input schema constraints.
+5. **FastAPI Endpoints (`tests/test_api.py`)**:
+   - Health check probe (`/health`).
+   - Job retrieval and validation error handling.
+

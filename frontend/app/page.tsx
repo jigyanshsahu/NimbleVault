@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { FolderScanner } from "@/components/FolderScanner";
 import { JobTable } from "@/components/JobTable";
-import { processBatch, fetchJobs } from "@/lib/api";
+import { processBatch, fetchJobs, syncYouTubeStatus } from "@/lib/api";
 import type { VideoJob, JobStatus } from "@/lib/api";
 import clsx from "clsx";
 
@@ -96,6 +96,7 @@ export default function HomePage() {
   const [jobs, setJobs] = useState<VideoJob[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isPolling, setIsPolling] = useState(true);
@@ -188,6 +189,28 @@ export default function HomePage() {
       addToast("error", err instanceof Error ? err.message : "Batch failed");
     } finally {
       setIsBatchProcessing(false);
+    }
+  };
+
+  // ── Sync YouTube handler ─────────────────────────────────────────────────
+
+  const handleSyncYouTube = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await syncYouTubeStatus();
+      if (result.reconciled_count > 0) {
+        addToast(
+          "info",
+          `Reconciled ${result.reconciled_count} desynced video(s) deleted on YouTube back to PENDING.`,
+        );
+      } else {
+        addToast("success", "Audit complete: All completed videos are active on YouTube.");
+      }
+      await loadJobs(true);
+    } catch (err) {
+      addToast("error", err instanceof Error ? err.message : "YouTube audit failed");
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -379,30 +402,45 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* Batch process button */}
-            <button
-              id="process-all-button"
-              onClick={handleBatchProcess}
-              disabled={isBatchProcessing || stats.pending === 0}
-              className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-purple px-5 py-2.5 text-sm font-semibold text-white shadow-glow transition-all hover:shadow-[0_0_30px_rgba(37,88,255,0.5)] disabled:cursor-not-allowed disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-400 disabled:shadow-none"
-            >
-              {isBatchProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Processing…
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Process All Pending
-                  {stats.pending > 0 && (
-                    <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-xs">
-                      {stats.pending}
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
+            {/* Action buttons */}
+            <div className="flex items-center gap-3">
+              <button
+                id="sync-youtube-button"
+                onClick={handleSyncYouTube}
+                disabled={isSyncing}
+                title="Verify all completed videos on YouTube and auto-reconcile deleted videos back to PENDING"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={clsx("h-4 w-4", isSyncing && "animate-spin text-brand-400")}
+                />
+                {isSyncing ? "Auditing YouTube…" : "Sync YouTube"}
+              </button>
+
+              <button
+                id="process-all-button"
+                onClick={handleBatchProcess}
+                disabled={isBatchProcessing || stats.pending === 0}
+                className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-purple px-5 py-2.5 text-sm font-semibold text-white shadow-glow transition-all hover:shadow-[0_0_30px_rgba(37,88,255,0.5)] disabled:cursor-not-allowed disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-400 disabled:shadow-none"
+              >
+                {isBatchProcessing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Processing…
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Process All Pending
+                    {stats.pending > 0 && (
+                      <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-xs">
+                        {stats.pending}
+                      </span>
+                    )}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Pipeline legend */}

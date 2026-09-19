@@ -39,6 +39,12 @@ export interface BatchResult {
   job_ids?: string[];
 }
 
+export interface SyncResult {
+  message: string;
+  reconciled_count: number;
+  reconciled_files: string[];
+}
+
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
@@ -94,3 +100,9 @@ export async function processJob(jobId: string): Promise<{ message: string; job_
 export async function processBatch(): Promise<BatchResult> {
   return apiFetch<BatchResult>("/api/process-batch", { method: "POST" });
 }
+
+/** Audit all completed jobs against YouTube and reconcile any deleted videos back to PENDING. */
+export async function syncYouTubeStatus(): Promise<SyncResult> {
+  return apiFetch<SyncResult>("/api/sync", { method: "POST" });
+}
+

@@ -23,7 +23,7 @@ from app.models.video import (
 )
 from app.services.drive_service import DriveService
 from app.services.gemini_service import GeminiService
-from app.services.youtube_service import YouTubeService
+from app.services.youtube_service import YouTubeService, is_video_alive_on_youtube
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -154,11 +154,11 @@ async def scan_folder(
     Recursively scan a Drive folder, persist new video files as PENDING jobs,
     and skip any already-known drive_file_id values (duplicate prevention).
     """
-    # Fetch all existing drive_file_ids from DB to prevent duplicates
-    existing_result = await db.execute(
-        select(VideoJob.drive_file_id)
-    )
-    existing_ids: set[str] = {row[0] for row in existing_result.fetchall()}
+    # Fetch all existing jobs from DB to prevent duplicates and reconcile state
+    existing_result = await db.execute(select(VideoJob))
+    existing_jobs_map: dict[str, VideoJob] = {
+        j.drive_file_id: j for j in existing_result.scalars().all()
+    }
 
     # Scan Drive
     try:
@@ -171,7 +171,23 @@ async def scan_folder(
 
     new_jobs: list[VideoJob] = []
     for df in drive_files:
-        if df.file_id in existing_ids:
+        if df.file_id in existing_jobs_map:
+            existing_job = existing_jobs_map[df.file_id]
+            # Reconciliation: If completed with a YouTube ID, verify video is still alive on YouTube!
+            if existing_job.status == JobStatus.COMPLETED.value and existing_job.youtube_video_id:
+                if not is_video_alive_on_youtube(existing_job.youtube_video_id):
+                    logger.warning(
+                        "Video '%s' (ID %s) was deleted from YouTube! Reconciling to PENDING.",
+                        existing_job.file_name,
+                        existing_job.youtube_video_id,
+                    )
+                    existing_job.status = JobStatus.PENDING.value
+                    existing_job.youtube_video_id = None
+                    existing_job.error_log = "Video was deleted on YouTube. Status reconciled to PENDING."
+                    db.add(existing_job)
+                    new_jobs.append(existing_job)
+                    continue
+
             logger.info("Skipping already-indexed file: %s", df.file_id)
             continue
 
@@ -188,8 +204,50 @@ async def scan_folder(
     for j in new_jobs:
         await db.refresh(j)
 
-    logger.info("Scan complete – %d new jobs added.", len(new_jobs))
+    logger.info("Scan complete – %d job(s) queued or reconciled.", len(new_jobs))
     return [VideoJobPublic.from_orm_with_url(j) for j in new_jobs]
+
+
+@router.post("/sync", response_model=dict)
+async def sync_youtube_status(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Audit all completed jobs against YouTube.
+    If a video was deleted from YouTube, reset its status to PENDING for re-upload.
+    """
+    result = await db.execute(
+        select(VideoJob).where(
+            VideoJob.status == JobStatus.COMPLETED.value,
+            VideoJob.youtube_video_id.isnot(None),
+        )
+    )
+    completed_jobs = result.scalars().all()
+    reconciled_count = 0
+    reconciled_files = []
+
+    for job in completed_jobs:
+        if not is_video_alive_on_youtube(job.youtube_video_id):
+            logger.warning(
+                "Video '%s' (ID %s) was deleted on YouTube. Reconciling to PENDING.",
+                job.file_name,
+                job.youtube_video_id,
+            )
+            job.status = JobStatus.PENDING.value
+            job.youtube_video_id = None
+            job.error_log = "Video was deleted on YouTube. Status reconciled to PENDING."
+            db.add(job)
+            reconciled_count += 1
+            reconciled_files.append(job.file_name)
+
+    if reconciled_count > 0:
+        await db.commit()
+
+    return {
+        "message": f"Sync complete. Reconciled {reconciled_count} desynced video(s).",
+        "reconciled_count": reconciled_count,
+        "reconciled_files": reconciled_files,
+    }
 
 
 @router.get("/jobs", response_model=list[VideoJobPublic])
