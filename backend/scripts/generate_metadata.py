@@ -56,11 +56,21 @@ async def process_single_path(path: str, as_json: bool = False):
 
 
 async def process_folder(folder_id: str, as_json: bool = False):
-    drive = DriveService()
+    try:
+        drive = DriveService()
+    except Exception as exc:
+        print(f"\n[ERROR] Google Drive service initialization failed: {exc}")
+        print("Please check that 'service_account.json' exists in backend/ with valid GCP credentials.\n")
+        return
+
     gemini = GeminiService()
 
     print(f"Scanning Google Drive Folder ID: {folder_id}...")
-    files = await drive.list_videos_recursive(folder_id)
+    try:
+        files = await drive.list_videos_recursive(folder_id)
+    except Exception as exc:
+        print(f"\n[ERROR] Google Drive folder scanning failed: {exc}\n")
+        return
     print(f"Found {len(files)} video file route(s). Generating metadata with Gemini AI...\n")
 
     results = []

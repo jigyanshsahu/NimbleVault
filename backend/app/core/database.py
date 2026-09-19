@@ -17,26 +17,17 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Normalize database URL for asyncpg compatibility if standard postgresql:// is provided
+# Normalize database URL for aiosqlite compatibility
 _db_url = settings.DATABASE_URL
-if _db_url.startswith("postgresql://"):
-    _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-if "sslmode=require" in _db_url:
-    _db_url = _db_url.replace("sslmode=require", "ssl=require")
-if "&channel_binding=require" in _db_url:
-    _db_url = _db_url.replace("&channel_binding=require", "")
-elif "channel_binding=require&" in _db_url:
-    _db_url = _db_url.replace("channel_binding=require&", "")
-elif "?channel_binding=require" in _db_url:
-    _db_url = _db_url.replace("?channel_binding=require", "")
+_engine_kwargs: dict = {"echo": settings.DEBUG}
+
+if _db_url.startswith("sqlite://") and not _db_url.startswith("sqlite+aiosqlite://"):
+    _db_url = _db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
 # ── Engine ─────────────────────────────────────────────────────────────────────
 engine = create_async_engine(
     _db_url,
-    echo=settings.DEBUG,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    **_engine_kwargs,
 )
 
 # ── Session factory ────────────────────────────────────────────────────────────
@@ -58,17 +49,6 @@ class Base(DeclarativeBase):
 @asynccontextmanager
 async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
     """Context-manager session for use inside background tasks."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields a DB session per request."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

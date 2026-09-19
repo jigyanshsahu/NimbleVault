@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # ── Database ───────────────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/nimblevault"
+    # SQLite database (zero-setup local execution via aiosqlite)
+    DATABASE_URL: str = "sqlite+aiosqlite:///nimblevault.db"
 
     # ── Google / Drive ─────────────────────────────────────────────────────────
     GOOGLE_SERVICE_ACCOUNT_JSON: str = "service_account.json"
@@ -38,7 +39,7 @@ class Settings(BaseSettings):
     ]
     YOUTUBE_CLIENT_SECRETS_JSON: str = "client_secrets.json"
     YOUTUBE_TOKEN_JSON: str = "youtube_token.json"
-    YOUTUBE_VIDEO_CATEGORY_ID: str = "22"   # "People & Blogs"
+    YOUTUBE_VIDEO_CATEGORY_ID: str = "22"   # Fallback default category ("People & Blogs")
     YOUTUBE_PRIVACY_STATUS: str = "private"  # private | unlisted | public
 
     # ── Gemini ─────────────────────────────────────────────────────────────────
@@ -47,9 +48,6 @@ class Settings(BaseSettings):
 
     # ── Local Storage ──────────────────────────────────────────────────────────
     TEMP_DOWNLOAD_DIR: str = os.path.join(tempfile.gettempdir(), "nimblevault_downloads")
-
-    # ── CORS ───────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 
 @lru_cache(maxsize=1)
