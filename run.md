@@ -186,25 +186,25 @@ Recursively scans Google Drive for newly added nested folders/videos, audits You
 ```bash
 python scripts/run_pipeline.py --sync
 # Or for a specific folder:
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --sync
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --sync
 ```
 
 ### Step 6.3: Safe Dry-Run (Recommended First Run)
 Performs actual Drive folder traversal, file download, and Gemini AI titling, but **simulates YouTube upload** (preserving your daily YouTube upload quota):
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --dry-run
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --dry-run
 ```
 
 ### Step 6.4: Scan & Index Drive Only
 Discovers and registers new video assets into the database without triggering downloads or uploads:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --scan-only
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --scan-only
 ```
 
 ### Step 6.5: Full End-to-End Live Pipeline
 Runs acquisition, AI titling, and live YouTube publishing:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID>
 ```
 
 ### Step 6.6: Process All Pending Jobs
@@ -216,7 +216,7 @@ python scripts/run_pipeline.py --batch
 ### Step 6.7: Force Re-processing
 Resets existing video jobs in the database back to `PENDING` and re-runs the entire pipeline:
 ```bash
-python scripts/run_pipeline.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs --force
+python scripts/run_pipeline.py --folder-id <YOUR_FOLDER_ID> --force
 ```
 
 ---
@@ -257,7 +257,7 @@ python scripts/generate_metadata.py --path "Drive/Products/Launch_X/Tutorials/Ge
 python scripts/generate_metadata.py --path "Drive/Vlogs/2024/Week12/Final_Edit.mp4" --json
 
 # Scan an entire Drive folder and print generated metadata cards:
-python scripts/generate_metadata.py --folder-id 1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs
+python scripts/generate_metadata.py --folder-id <YOUR_FOLDER_ID>
 ```
 
 ---

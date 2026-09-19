@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # ── Google / Drive ─────────────────────────────────────────────────────────
     GOOGLE_SERVICE_ACCOUNT_JSON: str = "service_account.json"
+    GOOGLE_DRIVE_FOLDER_ID: str = ""
     GOOGLE_DRIVE_SCOPES: list[str] = [
         "https://www.googleapis.com/auth/drive.readonly",
     ]

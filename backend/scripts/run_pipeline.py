@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -47,7 +48,7 @@ logging.getLogger("googleapiclient").setLevel(logging.WARNING)
 logger = logging.getLogger("nimblevault.pipeline")
 settings = get_settings()
 
-DEFAULT_FOLDER_ID = "1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs"
+DEFAULT_FOLDER_ID = settings.GOOGLE_DRIVE_FOLDER_ID or os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
 
 
 async def ensure_database():
@@ -463,11 +464,16 @@ async def execute_job(job_id: str, dry_run: bool = False):
 
 async def main():
     parser = argparse.ArgumentParser(description="NimbleVault Pipeline Execution")
+    folder_id_help = (
+        f"Google Drive folder ID to scan (default: {DEFAULT_FOLDER_ID})"
+        if DEFAULT_FOLDER_ID
+        else "Google Drive folder ID to scan (or set GOOGLE_DRIVE_FOLDER_ID in .env)"
+    )
     parser.add_argument(
         "--folder-id",
         type=str,
         default=DEFAULT_FOLDER_ID,
-        help=f"Google Drive folder ID to scan (default: {DEFAULT_FOLDER_ID})",
+        help=folder_id_help,
     )
     parser.add_argument(
         "--sync",
@@ -535,6 +541,10 @@ async def main():
     # Full Sync: Scan Google Drive + Audit YouTube + Display Status Table
     # ─────────────────────────────────────────────────────────────────────────
     if args.sync or (args.status and args.scan):
+        if not args.folder_id:
+            print("[ERROR] Google Drive folder ID is required for scanning.")
+            print("        Specify via --folder-id <FOLDER_ID> or set GOOGLE_DRIVE_FOLDER_ID in .env.\n")
+            return
         await scan_and_register_videos(args.folder_id)
         async with get_db_context() as db:
             await display_status_table(db)
@@ -589,7 +599,27 @@ async def main():
         return
 
     # Default / Scan-only flow: Scan folder and reconcile state
-    jobs = await scan_and_register_videos(args.folder_id)
+    jobs = []
+    if args.folder_id:
+        jobs = await scan_and_register_videos(args.folder_id)
+    else:
+        if args.scan_only:
+            print("[ERROR] Google Drive folder ID is required for scanning.")
+            print("        Specify via --folder-id <FOLDER_ID> or set GOOGLE_DRIVE_FOLDER_ID in .env.\n")
+            return
+        # If no folder_id provided, check if there are existing pending jobs to process
+        async with get_db_context() as db:
+            res = await db.execute(
+                select(VideoJob).where(VideoJob.status == JobStatus.PENDING.value)
+            )
+            jobs = res.scalars().all()
+            if jobs:
+                print(f"No folder ID specified. Found {len(jobs)} existing PENDING job(s) in database to process...")
+            else:
+                print("[INFO] No Google Drive folder ID specified and no pending jobs found.")
+                print("       To scan Google Drive, specify --folder-id <FOLDER_ID> or set GOOGLE_DRIVE_FOLDER_ID in .env.")
+                print("       Example: python scripts/run_pipeline.py --folder-id <FOLDER_ID>\n")
+                return
 
     if args.scan_only:
         async with get_db_context() as db:

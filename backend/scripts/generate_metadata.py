@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,10 +28,12 @@ import logging
 logging.getLogger("google").setLevel(logging.ERROR)
 logging.getLogger("google_genai").setLevel(logging.ERROR)
 
+from app.core.config import get_settings
 from app.services.gemini_service import GeminiService, VideoMetadata
 from app.services.drive_service import DriveService
 
-DEFAULT_FOLDER_ID = "1HKD2on9LkF3OfKvWmkZwtdnSHMS1HUGs"
+settings = get_settings()
+DEFAULT_FOLDER_ID = settings.GOOGLE_DRIVE_FOLDER_ID or os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
 
 
 def print_metadata_card(path: str, meta: VideoMetadata):
@@ -94,10 +97,16 @@ async def main():
         type=str,
         help="Single Google Drive file route (e.g. Drive/Products/Launch_X/Tutorials/Getting_Started.mov)",
     )
+    folder_id_help = (
+        f"Google Drive folder ID to scan and generate metadata for (default: {DEFAULT_FOLDER_ID})"
+        if DEFAULT_FOLDER_ID
+        else "Google Drive folder ID to scan and generate metadata for (or set GOOGLE_DRIVE_FOLDER_ID in .env)"
+    )
     parser.add_argument(
         "--folder-id",
         type=str,
-        help=f"Google Drive folder ID to scan and generate metadata for (default: {DEFAULT_FOLDER_ID})",
+        default=DEFAULT_FOLDER_ID,
+        help=folder_id_help,
     )
     parser.add_argument(
         "--json",
@@ -111,6 +120,9 @@ async def main():
         await process_single_path(args.path, as_json=args.json)
     else:
         folder_id = args.folder_id or DEFAULT_FOLDER_ID
+        if not folder_id:
+            print("[ERROR] Please provide a file route via --path or a Google Drive folder ID via --folder-id (or GOOGLE_DRIVE_FOLDER_ID in .env)")
+            return
         await process_folder(folder_id, as_json=args.json)
 
 
