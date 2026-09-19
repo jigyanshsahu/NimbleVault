@@ -63,7 +63,7 @@ NimbleVault is engineered purely as a **backend automation script and CLI applic
 
 NimbleVault's codebase is designed to directly satisfy the four evaluation criteria in the assignment brief:
 
-### 1. Cloud & Infrastructure Understanding (GCP Emphasis) – 30%
+### 1. Cloud & Infrastructure Understanding (GCP Emphasis) – 
 - **Google Drive API v3 Integration (`DriveService`)**:
   - Authenticates via GCP Service Account credentials (`service_account.json`).
   - Utilizes `pageSize=1000` (API maximum) to minimize HTTP network roundtrips.
@@ -77,7 +77,7 @@ NimbleVault's codebase is designed to directly satisfy the four evaluation crite
   - Explicitly detects `403 quotaExceeded` limits, providing clear diagnostic explanations of YouTube's 10,000 unit daily upload threshold.
   - Features self-healing YouTube liveness auditing (`is_video_alive_on_youtube`), detecting videos deleted directly on YouTube and reconciling database state back to `PENDING`.
 
-### 2. Core Logic and Python Proficiency – 30%
+### 2. Core Logic and Python Proficiency – 
 - **Function 1: Mass Content Acquisition**:
   - Recursively navigates arbitrarily deep Google Drive folder hierarchies.
   - Preserves full semantic virtual paths (e.g., `Drive/Products/Launch_X/Tutorials/Getting_Started.mov`).
@@ -96,7 +96,7 @@ NimbleVault's codebase is designed to directly satisfy the four evaluation crite
   - Traversal runs in $O(N)$ time where $N$ is the number of folders/files, avoiding redundant queries.
   - Chunked streaming ensures constant $O(1)$ memory consumption regardless of whether video files are 50 MB or 10 GB.
 
-### 3. Data Management and Persistence Justification – 15%
+### 3. Data Management and Persistence Justification – 
 **Why a Relational Database is Critical**:
 A database is essential for a mission-critical cloud automation pipeline:
 1. **Idempotency & Duplicate Prevention**: Re-running the pipeline against a Google Drive folder must never re-upload duplicate videos. An indexed `UNIQUE` constraint on `drive_file_id` ensures that repeated scans skip already-indexed assets.
@@ -106,7 +106,7 @@ A database is essential for a mission-critical cloud automation pipeline:
 4. **Self-Healing Reconciliation**: If an uploaded video is subsequently deleted on YouTube, NimbleVault detects the deletion and reverts its status to `PENDING` for re-upload.
 5. **Zero-Setup SQLite Database (`aiosqlite`)**: Works immediately out of the box with zero external dependencies for fast evaluation.
 
-### 4. Code Structure and Engineering Principles – 25%
+### 4. Code Structure and Engineering Principles – 
 - **Modularity**: Strict separation between core settings (`app/core/config.py`), database layer (`app/core/database.py`), data models (`app/models/video.py`), external service adapters (`app/services/`), and CLI orchestrators (`scripts/`).
 - **Configuration Management**: Powered by `pydantic-settings`, reading from `.env` with strict type enforcement and graceful fallback defaults.
 - **CLI Ergonomics**: Rich command-line flags (`--folder-id`, `--dry-run`, `--scan-only`, `--batch`, `--force`, `--status`, `--demo`) with ANSI-formatted progress reporting and UTF-8 console compatibility.
