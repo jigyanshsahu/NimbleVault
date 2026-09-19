@@ -22,10 +22,28 @@ settings = get_settings()
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 
 
-def _load_or_refresh_credentials() -> google.oauth2.credentials.Credentials:
+def is_youtube_authenticated() -> bool:
+    """Check whether a valid or refreshable YouTube OAuth token exists."""
+    import os
+    import json
+
+    token_path = settings.YOUTUBE_TOKEN_JSON
+    if not os.path.exists(token_path):
+        return False
+    try:
+        with open(token_path) as fh:
+            creds = google.oauth2.credentials.Credentials.from_authorized_user_info(
+                json.load(fh), settings.YOUTUBE_SCOPES
+            )
+            return bool(creds and (creds.valid or creds.refresh_token))
+    except Exception:
+        return False
+
+
+def _load_or_refresh_credentials(allow_interactive: bool = False) -> google.oauth2.credentials.Credentials:
     """
-    Load OAuth2 credentials from the token file, refreshing if expired,
-    or initiate the browser-based OAuth flow when no token exists.
+    Load OAuth2 credentials from the token file, refreshing if expired.
+    If allow_interactive is True and token is missing, starts local browser OAuth flow.
     """
     import json
     import os
@@ -40,15 +58,24 @@ def _load_or_refresh_credentials() -> google.oauth2.credentials.Credentials:
             )
 
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        _persist_token(creds)
+        try:
+            creds.refresh(Request())
+            _persist_token(creds)
+        except Exception as exc:
+            logger.warning("Failed to refresh YouTube token: %s", exc)
+            creds = None
 
     if not creds or not creds.valid:
+        if not allow_interactive:
+            raise RuntimeError(
+                "YouTube is not authenticated. Please run 'python scripts/auth_youtube.py' "
+                "to authenticate your YouTube account."
+            )
         flow = InstalledAppFlow.from_client_secrets_file(
             settings.YOUTUBE_CLIENT_SECRETS_JSON,
             settings.YOUTUBE_SCOPES,
         )
-        creds = flow.run_local_server(port=0, open_browser=False)
+        creds = flow.run_local_server(port=8080, open_browser=True)
         _persist_token(creds)
 
     return creds
@@ -63,7 +90,7 @@ def _persist_token(creds: google.oauth2.credentials.Credentials) -> None:
 
 
 def _build_youtube_service():  # type: ignore[return]
-    creds = _load_or_refresh_credentials()
+    creds = _load_or_refresh_credentials(allow_interactive=False)
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 

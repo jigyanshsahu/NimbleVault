@@ -21,17 +21,28 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# MIME types we care about
-VIDEO_MIME_TYPES: set[str] = {
-    "video/mp4",
-    "video/quicktime",          # .mov
-    "video/x-msvideo",         # .avi
-    "video/x-matroska",        # .mkv
-    "video/mpeg",
-    "video/webm",
-    "video/x-ms-wmv",
-    "video/3gpp",
+# Supported video extensions and MIME types
+VIDEO_EXTENSIONS: set[str] = {
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".mpeg",
+    ".mpg",
+    ".webm",
+    ".wmv",
+    ".3gp",
+    ".flv",
+    ".m4v",
 }
+
+
+def is_video_file(name: str, mime: str) -> bool:
+    """Check if a file is a video by MIME type or file extension."""
+    if mime and mime.startswith("video/"):
+        return True
+    ext = Path(name).suffix.lower()
+    return ext in VIDEO_EXTENSIONS
 
 # ── DriveFile dataclass ────────────────────────────────────────────────────────
 
@@ -133,7 +144,7 @@ class DriveService:
                     results.extend(
                         self._list_videos_sync(item_id, item_path)
                     )
-                elif mime in VIDEO_MIME_TYPES:
+                elif is_video_file(item_name, mime):
                     results.append(
                         DriveFile(
                             file_id=item_id,

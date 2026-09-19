@@ -18,10 +18,9 @@ settings = get_settings()
 # ── Prompt template ────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
-You are a YouTube content strategist specialising in title optimisation.
-Your task is to convert a Google Drive file path into a clean, professional
-YouTube video title. Return ONLY the final title string — no explanations,
-no quotation marks, no markdown.
+You are a YouTube title optimizer.
+Your job is to convert a Google Drive file path into a clean, professional YouTube video title.
+Return ONLY the title string. No quotes, no markdown, no explanation.
 
 Transformation rules:
 1. Strip the leading "Drive/" prefix and the file extension.
@@ -35,17 +34,10 @@ Transformation rules:
    naturally.
 
 Examples:
-  Drive/Vlogs/2024/Week12/Final_Edit.mp4
-  → Vlogs 2024: Week 12 Final Edit
-
-  Drive/Products/Launch_X/Tutorials/Getting_Started.mov
-  → Launch X Product Tutorial: Getting Started
-
-  Drive/Team/Archive/Q3/Marketing_Review_10-05.avi
-  → Team Archive Q3: Marketing Review 10-05
-
-  Drive/Clients/ACME/Testimonial_v2.mp4
-  → Client Testimonial: ACME (v2)
+Drive/Vlogs/2024/Week12/Final_Edit.mp4 -> Vlogs 2024: Week 12 Final Edit
+Drive/Products/Launch_X/Tutorials/Getting_Started.mov -> Launch X Product Tutorial: Getting Started
+Drive/Team/Archive/Q3/Marketing_Review_10-05.avi -> Team Archive Q3: Marketing Review 10-05
+Drive/Clients/ACME/Testimonial_v2.mp4 -> Client Testimonial: ACME (v2)
 """
 
 # ── Service ────────────────────────────────────────────────────────────────────
@@ -67,9 +59,7 @@ class GeminiService:
         Returns:
             A clean, professionally formatted title string.
         """
-        prompt = (
-            f"Convert this Drive path to a YouTube title:\n{full_path}"
-        )
+        prompt = f"File Path: {full_path}\nYouTube Title:"
 
         try:
             response = await self._client.aio.models.generate_content(
@@ -77,16 +67,20 @@ class GeminiService:
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
-                    temperature=0.3,
+                    temperature=0.1,
                     max_output_tokens=128,
                 ),
             )
-            title = response.text.strip().strip('"').strip("'")
+            title = (response.text or "").strip().strip('"').strip("'")
+            if not title:
+                logger.warning("Gemini returned empty title for '%s', using fallback", full_path)
+                return self._fallback_title(full_path)
+
             logger.info("Gemini title for '%s' → '%s'", full_path, title)
             return title
 
         except Exception as exc:
-            logger.error("Gemini API error for path '%s': %s", full_path, exc)
+            logger.error("Gemini API error for path '%s' (%s), using fallback: %s", full_path, type(exc).__name__, exc)
             # Graceful fallback: derive a reasonable title from the path
             return self._fallback_title(full_path)
 

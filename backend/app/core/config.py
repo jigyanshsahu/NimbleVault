@@ -4,6 +4,8 @@ Loads all settings from environment variables via pydantic-settings.
 """
 from __future__ import annotations
 
+import os
+import tempfile
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -41,10 +43,10 @@ class Settings(BaseSettings):
 
     # ── Gemini ─────────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     # ── Local Storage ──────────────────────────────────────────────────────────
-    TEMP_DOWNLOAD_DIR: str = "/tmp/nimblevault_downloads"
+    TEMP_DOWNLOAD_DIR: str = os.path.join(tempfile.gettempdir(), "nimblevault_downloads")
 
     # ── CORS ───────────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
