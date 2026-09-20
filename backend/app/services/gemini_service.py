@@ -48,13 +48,16 @@ class VideoMetadata(BaseModel):
     """
     title: str = Field(
         description=(
-            "Clean, professional YouTube title strictly under 100 characters, "
-            "stripping file extensions and raw formatting, formatted logically from folder hierarchy"
+            "Meaningful, descriptive YouTube title strictly under 100 characters that clearly "
+            "communicates the video's core topic and value proposition. Go beyond simply reformatting "
+            "the filename — infer the subject matter from the full folder hierarchy and craft an "
+            "engaging, SEO-friendly title that a viewer would want to click on"
         ),
     )
     description: str = Field(
         description=(
-            "2-3 sentence description summarizing the video context based on folder hierarchy, "
+            "4-5 sentence description providing a rich summary of the video content, its purpose, "
+            "target audience, and key takeaways based on the folder hierarchy and filename context, "
             "followed by 3-5 relevant hashtags extracted from folder names"
         ),
     )
@@ -111,19 +114,21 @@ Rules:
 1. Title (< 100 characters):
    - Strip all file extensions (.mp4, .mov, .avi, .mkv, .webm, etc.).
    - Remove raw delimiters (underscores, camelCase, hyphens) and convert to clean Title Case.
+   - CRITICAL: Do NOT just reformat the filename. Infer the actual subject matter, purpose, and value of the video from the full folder path and craft a meaningful, descriptive title that clearly communicates what the viewer will learn or see.
+   - Make titles engaging and SEO-friendly — a good title tells the viewer WHY they should watch.
    - Format hierarchy logically (e.g., "Category/Project: Subtopic - Specific Detail" or "Category Year: Subtopic Detail").
    - Extract version tags like _v2, _v3 as (v2), (v3) at the end.
    - Keep dates, years, and quarters (2024, Week 12, Q3, 10-05) intact.
    - Hard constraint: Title length must be strictly less than 100 characters.
    - Reference Examples:
-     * Drive/Vlogs/2024/Week12/Final_Edit.mp4 -> Vlogs 2024: Week 12 Final Edit
-     * Drive/Products/Launch_X/Tutorials/Getting_Started.mov -> Launch X Product Tutorial: Getting Started
-     * Drive/Team/Archive/Q3/Marketing_Review_10-05.avi -> Team Archive Q3: Marketing Review 10-05
-     * Drive/Clients/ACME/Testimonial_v2.mp4 -> Client Testimonial: ACME (v2)
+     * Drive/Vlogs/2024/Week12/Final_Edit.mp4 -> Weekly Vlog: Behind the Scenes of Week 12, 2024
+     * Drive/Products/Launch_X/Tutorials/Getting_Started.mov -> Getting Started with Launch X: Complete Beginner's Guide
+     * Drive/Team/Archive/Q3/Marketing_Review_10-05.avi -> Q3 Marketing Strategy Review: Key Insights from Oct 5th
+     * Drive/Clients/ACME/Testimonial_v2.mp4 -> ACME Client Success Story: Testimonial & Results (v2)
 
 2. Description:
-   - Formulate exactly 2 to 3 concise, engaging sentences summarizing the video content and series context based on the complete folder hierarchy and filename.
-   - Immediately follow the 2-3 sentences with 3 to 5 relevant hashtags extracted from the folder hierarchy names (e.g., #Products #LaunchX #Tutorial).
+   - Formulate exactly 4 to 5 engaging sentences providing a rich summary of the video content, its purpose, target audience, key takeaways, and how it fits within the broader series or project context based on the complete folder hierarchy and filename.
+   - Immediately follow the 4-5 sentences with 3 to 5 relevant hashtags extracted from the folder hierarchy names (e.g., #Products #LaunchX #Tutorial).
 
 3. Category ID:
    - Select the most appropriate numeric YouTube Category ID string matching the video subject matter:
@@ -323,7 +328,7 @@ class GeminiService:
     def _fallback_metadata(cls, full_path: str) -> VideoMetadata:
         """
         Derive full fallback metadata locally when Gemini API is unreachable.
-        Produces title (< 100 chars), 2-3 sentence description with 3-5 hashtags,
+        Produces title (< 100 chars), 4-5 sentence description with 3-5 hashtags,
         and dynamically derived category_id based on path/title heuristics.
         """
         title = cls._fallback_title(full_path)
@@ -337,10 +342,12 @@ class GeminiService:
         folder_context = " / ".join(s.title() for s in segments[:-1]) if len(segments) > 1 else "Root Folder"
         topic_name = segments[-1].title() if segments else "Video Content"
 
-        # 2-3 sentences summarizing the video context based on folder hierarchy
+        # 4-5 sentences summarizing the video context based on folder hierarchy
         sentence1 = f"This video features {topic_name}, organized under the {folder_context} folder hierarchy in Google Drive."
         sentence2 = f"It provides comprehensive walkthrough documentation and records key progress for the {segments[0].title() if segments else 'project'} series."
-        sentence3 = "The content was automatically ingested, titled, and processed for distribution via NimbleVault."
+        sentence3 = f"Viewers interested in {segments[0].title() if segments else 'this topic'} will find valuable insights and detailed coverage of the subject matter presented here."
+        sentence4 = f"This content is part of a curated collection designed to deliver meaningful and actionable information to the audience."
+        sentence5 = "The content was automatically ingested, titled, and processed for distribution via NimbleVault."
 
         # 3-5 relevant hashtags extracted from folder names
         tags_raw = [re.sub(r"[^a-zA-Z0-9]", "", s.title()) for s in segments if s]
@@ -356,7 +363,7 @@ class GeminiService:
                     break
 
         hashtags_str = " ".join(hashtags_list[:5])
-        description = f"{sentence1} {sentence2} {sentence3}\n\n{hashtags_str}"
+        description = f"{sentence1} {sentence2} {sentence3} {sentence4} {sentence5}\n\n{hashtags_str}"
 
         return VideoMetadata(
             title=title[:100],
