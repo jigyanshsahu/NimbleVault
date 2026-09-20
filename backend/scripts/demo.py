@@ -55,7 +55,7 @@ BENCHMARKS = [
         "path": "Drive/Vlogs/2024/Week12/Final_Edit.mp4",
         "mime": "video/mp4",
         "size_mb": 142.5,
-        "expected_title": "Vlogs 2024: Week 12 Final Edit",
+        "expected_title": "Behind the Scenes of My Week 12 Vlog, 2024",
         "tags": ["vlogs", "2024", "week12"],
     },
     {
@@ -63,7 +63,7 @@ BENCHMARKS = [
         "path": "Drive/Products/Launch_X/Tutorials/Getting_Started.mov",
         "mime": "video/quicktime",
         "size_mb": 88.0,
-        "expected_title": "Launch X Product Tutorial: Getting Started",
+        "expected_title": "Getting Started with Launch X - A Complete Beginner's Guide",
         "tags": ["products", "launch_x", "tutorials"],
     },
     {
@@ -71,7 +71,7 @@ BENCHMARKS = [
         "path": "Drive/Team/Archive/Q3/Marketing_Review_10-05.avi",
         "mime": "video/x-msvideo",
         "size_mb": 310.2,
-        "expected_title": "Team Archive Q3: Marketing Review 10-05",
+        "expected_title": "Q3 Marketing Strategy Review | Key Insights from Oct 5th",
         "tags": ["team", "archive", "q3"],
     },
     {
@@ -79,7 +79,7 @@ BENCHMARKS = [
         "path": "Drive/Clients/ACME/Testimonial_v2.mp4",
         "mime": "video/mp4",
         "size_mb": 64.8,
-        "expected_title": "Client Testimonial: ACME (v2)",
+        "expected_title": "How ACME Transformed Their Business (v2)",
         "tags": ["clients", "acme", "testimonial"],
     },
 ]

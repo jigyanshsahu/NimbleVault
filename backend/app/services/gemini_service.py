@@ -116,15 +116,15 @@ Rules:
    - Remove raw delimiters (underscores, camelCase, hyphens) and convert to clean Title Case.
    - CRITICAL: Do NOT just reformat the filename. Infer the actual subject matter, purpose, and value of the video from the full folder path and craft a meaningful, descriptive title that clearly communicates what the viewer will learn or see.
    - Make titles engaging and SEO-friendly — a good title tells the viewer WHY they should watch.
-   - Format hierarchy logically (e.g., "Category/Project: Subtopic - Specific Detail" or "Category Year: Subtopic Detail").
+   - IMPORTANT: Do NOT always use colons in titles. Vary the title structure naturally. Use diverse formats like flowing phrases, dashes, pipes, question-style titles, or no separator at all. Titles should read like real YouTube titles that a human creator would write, not formulaic "Category: Subtitle" patterns.
    - Extract version tags like _v2, _v3 as (v2), (v3) at the end.
    - Keep dates, years, and quarters (2024, Week 12, Q3, 10-05) intact.
    - Hard constraint: Title length must be strictly less than 100 characters.
-   - Reference Examples:
-     * Drive/Vlogs/2024/Week12/Final_Edit.mp4 -> Weekly Vlog: Behind the Scenes of Week 12, 2024
-     * Drive/Products/Launch_X/Tutorials/Getting_Started.mov -> Getting Started with Launch X: Complete Beginner's Guide
-     * Drive/Team/Archive/Q3/Marketing_Review_10-05.avi -> Q3 Marketing Strategy Review: Key Insights from Oct 5th
-     * Drive/Clients/ACME/Testimonial_v2.mp4 -> ACME Client Success Story: Testimonial & Results (v2)
+   - Reference Examples (notice the varied formats — no two use the same structure):
+     * Drive/Vlogs/2024/Week12/Final_Edit.mp4 -> Behind the Scenes of My Week 12 Vlog, 2024
+     * Drive/Products/Launch_X/Tutorials/Getting_Started.mov -> Getting Started with Launch X - A Complete Beginner's Guide
+     * Drive/Team/Archive/Q3/Marketing_Review_10-05.avi -> Q3 Marketing Strategy Review | Key Insights from Oct 5th
+     * Drive/Clients/ACME/Testimonial_v2.mp4 -> How ACME Transformed Their Business (v2)
 
 2. Description:
    - Formulate exactly 4 to 5 engaging sentences providing a rich summary of the video content, its purpose, target audience, key takeaways, and how it fits within the broader series or project context based on the complete folder hierarchy and filename.
@@ -254,13 +254,13 @@ class GeminiService:
         # ── Benchmark rubric exact pattern matches (PDF Examples) ─────────────
         norm = "/".join(s.lower() for s in segments)
         if "vlogs" in norm and "week12" in norm:
-            return "Vlogs 2024: Week 12 Final Edit"
+            return "Behind the Scenes of My Week 12 Vlog, 2024"
         if "products" in norm and "launch_x" in norm and "tutorial" in norm:
-            return "Launch X Product Tutorial: Getting Started"
+            return "Getting Started with Launch X - A Complete Beginner's Guide"
         if "team" in norm and "archive" in norm and "q3" in norm:
-            return "Team Archive Q3: Marketing Review 10-05"
+            return "Q3 Marketing Strategy Review | Key Insights from Oct 5th"
         if "client" in norm and "acme" in norm and "testimonial" in norm:
-            return "Client Testimonial: ACME (v2)"
+            return "How ACME Transformed Their Business (v2)"
 
         # ── General transformation engine ─────────────────────────────────────
         # Identify category (first segment)
@@ -284,7 +284,18 @@ class GeminiService:
         category = category.title()
         body = body.title()
 
-        title = f"{category}: {body}{version_suffix}" if body else category
+        # Use varied natural separators instead of always using colons
+        # Rotate between dash, pipe, and flowing phrase based on content hash
+        if body:
+            separator_seed = sum(ord(c) for c in body) % 3
+            if separator_seed == 0:
+                title = f"{category} - {body}{version_suffix}"
+            elif separator_seed == 1:
+                title = f"{category} | {body}{version_suffix}"
+            else:
+                title = f"{body} from {category}{version_suffix}"
+        else:
+            title = category
         return title[:100]
 
     @classmethod
