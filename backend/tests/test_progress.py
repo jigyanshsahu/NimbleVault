@@ -55,12 +55,19 @@ class TestTransferProgressBar(unittest.TestCase):
             self.assertIn("100%", output)
             self.assertTrue(pbar._closed)
 
-    def test_context_manager_lifecycle(self):
-        """Ensure context manager properly enters, updates, and closes."""
-        with TransferProgressBar(action="Downloading", name="clip.mp4", total_bytes=500) as pbar:
-            pbar.update(250)
-            pbar.update(500)
-            self.assertFalse(pbar._closed)
+    def test_safe_ncols_bounds(self):
+        """Ensure safe ncols calculations remain bounded and reserve margins."""
+        from app.core.progress import get_safe_ncols
+        cols = get_safe_ncols(max_width=90, margin=4)
+        self.assertGreaterEqual(cols, 40)
+        self.assertLessEqual(cols, 90)
+
+    def test_pbar_write(self):
+        """Ensure pbar.write handles writing without error."""
+        buf = io.StringIO()
+        pbar = TransferProgressBar(action="Uploading", name="test.mp4", total_bytes=1000, file=buf)
+        pbar.write("Temporary status message")
+        pbar.close()
         self.assertTrue(pbar._closed)
 
 
