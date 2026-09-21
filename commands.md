@@ -58,7 +58,7 @@ python scripts/run_pipeline.py --status
 # 3. Dry run — real Drive download + Gemini titling, simulated YouTube upload
 python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID --dry-run
 
-# 4. Live pipeline — full end-to-end with real YouTube upload
+# 4. Live pipeline — full end-to-end with real YouTube upload ⭐⭐
 python scripts/run_pipeline.py --folder-id YOUR_FOLDER_ID
 
 # 5. Scan only — discover and index videos without processing
