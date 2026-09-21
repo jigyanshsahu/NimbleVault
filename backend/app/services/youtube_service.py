@@ -20,6 +20,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 from app.core.config import get_settings
+from app.core.progress import TransferProgressBar
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -179,60 +180,74 @@ class YouTubeService:
             media_body=media,
         )
 
+        media_size = None
+        try:
+            media_size = media.size()
+        except Exception:
+            pass
+
+        pbar = TransferProgressBar(action="Uploading", name=title, total_bytes=media_size)
         response = None
         max_retries = 5
-        while response is None:
-            retry_count = 0
-            while True:
-                try:
-                    status, response = insert_request.next_chunk()
-                    if status:
-                        pct = int(status.progress() * 100)
-                        logger.info("Uploading '%s' – %d%%", title, pct)
-                    break
-                except HttpError as http_err:
-                    status_code = getattr(http_err.resp, "status", None)
-                    err_content = str(http_err)
-                    if status_code == 403 and "quotaExceeded" in err_content:
-                        raise RuntimeError(
-                            "YouTube API daily upload quota exceeded (403 quotaExceeded). "
-                            "Default free tier quota is 10,000 units/day (video uploads cost 1,600 units). "
-                            "Please test with --dry-run or wait for quota reset at midnight PST."
-                        ) from http_err
-                    if status_code == 401:
-                        raise RuntimeError(
-                            "YouTube authentication expired or invalid (401 Unauthorized). "
-                            "Please run 'python scripts/auth_youtube.py' to re-authenticate."
-                        ) from http_err
+        try:
+            while response is None:
+                retry_count = 0
+                while True:
+                    try:
+                        status, response = insert_request.next_chunk()
+                        if status:
+                            pct = int(status.progress() * 100)
+                            logger.debug("Uploading '%s' – %d%%", title, pct)
+                            pbar.update(
+                                current_bytes=status.resumable_progress,
+                                total_bytes=getattr(status, "total_size", None),
+                            )
+                        break
+                    except HttpError as http_err:
+                        status_code = getattr(http_err.resp, "status", None)
+                        err_content = str(http_err)
+                        if status_code == 403 and "quotaExceeded" in err_content:
+                            raise RuntimeError(
+                                "YouTube API daily upload quota exceeded (403 quotaExceeded). "
+                                "Default free tier quota is 10,000 units/day (video uploads cost 1,600 units). "
+                                "Please test with --dry-run or wait for quota reset at midnight PST."
+                            ) from http_err
+                        if status_code == 401:
+                            raise RuntimeError(
+                                "YouTube authentication expired or invalid (401 Unauthorized). "
+                                "Please run 'python scripts/auth_youtube.py' to re-authenticate."
+                            ) from http_err
 
-                    # For transient 5xx errors or 429 rate limits, retry with exponential backoff
-                    if status_code in (429, 500, 502, 503, 504):
+                        # For transient 5xx errors or 429 rate limits, retry with exponential backoff
+                        if status_code in (429, 500, 502, 503, 504):
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                raise RuntimeError(
+                                    f"YouTube upload failed after {max_retries} retries: {http_err}"
+                                ) from http_err
+                            backoff = 2 ** retry_count
+                            logger.warning(
+                                "Transient HTTP %s during YouTube upload. Retrying in %ds (attempt %d/%d)...",
+                                status_code, backoff, retry_count, max_retries
+                            )
+                            time.sleep(backoff)
+                        else:
+                            raise RuntimeError(f"YouTube API upload error: {http_err}") from http_err
+
+                    except (IOError, OSError) as io_err:
                         retry_count += 1
                         if retry_count > max_retries:
                             raise RuntimeError(
-                                f"YouTube upload failed after {max_retries} retries: {http_err}"
-                            ) from http_err
+                                f"Network error during YouTube upload after {max_retries} retries: {io_err}"
+                            ) from io_err
                         backoff = 2 ** retry_count
                         logger.warning(
-                            "Transient HTTP %s during YouTube upload. Retrying in %ds (attempt %d/%d)...",
-                            status_code, backoff, retry_count, max_retries
+                            "Network connection error during YouTube upload chunk. Retrying in %ds (attempt %d/%d)...",
+                            backoff, retry_count, max_retries
                         )
                         time.sleep(backoff)
-                    else:
-                        raise RuntimeError(f"YouTube API upload error: {http_err}") from http_err
-
-                except (IOError, OSError) as io_err:
-                    retry_count += 1
-                    if retry_count > max_retries:
-                        raise RuntimeError(
-                            f"Network error during YouTube upload after {max_retries} retries: {io_err}"
-                        ) from io_err
-                    backoff = 2 ** retry_count
-                    logger.warning(
-                        "Network connection error during YouTube upload chunk. Retrying in %ds (attempt %d/%d)...",
-                        backoff, retry_count, max_retries
-                    )
-                    time.sleep(backoff)
+        finally:
+            pbar.close()
 
         video_id: str = response["id"]
         logger.info(

@@ -18,6 +18,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
 from app.core.config import get_settings
+from app.core.progress import TransferProgressBar
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -289,6 +290,7 @@ class DriveService:
 
         max_retries = 5
         chunk_size = 8 * 1024 * 1024  # 8 MB chunks
+        pbar = TransferProgressBar(action="Downloading", name=destination.name)
 
         try:
             downloader = MediaIoBaseDownload(fh, request, chunksize=chunk_size)
@@ -300,7 +302,11 @@ class DriveService:
                         status, done = downloader.next_chunk()
                         if status:
                             pct = int(status.progress() * 100)
-                            logger.info("Downloading %s – %d%%", destination.name, pct)
+                            logger.debug("Downloading %s – %d%%", destination.name, pct)
+                            pbar.update(
+                                current_bytes=status.resumable_progress,
+                                total_bytes=getattr(status, "total_size", None),
+                            )
                         break
                     except (HttpError, IOError, OSError) as exc:
                         retry_count += 1
@@ -321,6 +327,7 @@ class DriveService:
                 f"Drive download failed for {file_id}: {exc}"
             ) from exc
         finally:
+            pbar.close()
             if not fh.closed:
                 fh.close()
 

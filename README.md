@@ -84,7 +84,7 @@ NimbleVault is a Python-based backend automation platform that processes video f
 | **Shortcut Resolution** | Follows Google Drive shortcut references to target folders and files |
 | **Cycle Detection** | Guards against circular folder references using a visited-set algorithm |
 | **Paginated API Calls** | Handles large folders using Drive API pagination (`nextPageToken`) |
-| **Chunked Downloads** | Streams files in 8 MB chunks to avoid loading entire videos into memory |
+| **Chunked Downloads** | Streams files in 8 MB chunks with dynamic single-line progress bars (speed, ETA, byte counters) to avoid loading entire videos into memory |
 | **Fault-Isolated Traversal** | Subfolder permission errors are logged and skipped — they don't halt the entire scan |
 | **Service Account Auth** | Uses a Google Service Account for secure, non-interactive Drive access |
 
@@ -102,7 +102,7 @@ NimbleVault is a Python-based backend automation platform that processes video f
 |---|---|
 | **OAuth 2.0 Authentication** | Interactive browser-based auth flow with persistent, auto-refreshable tokens |
 | **Resumable Uploads** | Uses YouTube's resumable upload protocol for reliable large-file transfers |
-| **Chunked Transmission** | Uploads in 8 MB chunks with real-time progress logging |
+| **Chunked Transmission** | Uploads in 8 MB chunks with dynamic single-line progress tracking |
 | **Exponential Backoff Retry** | Handles transient 429/5xx errors with automatic exponential backoff (up to 5 retries) |
 | **Quota-Aware Errors** | Detects `403 quotaExceeded` and provides actionable guidance |
 | **Video Liveness Check** | Verifies if a previously uploaded video still exists on YouTube via HTTP scraping |
@@ -191,6 +191,7 @@ NimbleVault is a Python-based backend automation platform that processes video f
 | **Drive Auth** | Google Service Account | Non-interactive, credential-file-based authentication |
 | **YouTube Auth** | OAuth 2.0 (google-auth-oauthlib) | Interactive browser flow with persistent token refresh |
 | **HTTP Client** | httpx ≥ 0.27 | Video liveness checks via YouTube page scraping |
+| **Progress Bar** | tqdm ≥ 4.66 | Dynamic transfer progress tracking (speed, ETA, byte counters, middle-truncated names) |
 | **Env Loading** | python-dotenv ≥ 1.0 | `.env` file parsing for local development |
 
 ---
@@ -210,7 +211,8 @@ nimblevault/
     │   │
     │   ├── core/
     │   │   ├── config.py               # pydantic-settings: all env vars, LRU-cached singleton
-    │   │   └── database.py             # SQLAlchemy async engine, session factory, Base class
+    │   │   ├── database.py             # SQLAlchemy async engine, session factory, Base class
+    │   │   └── progress.py             # TransferProgressBar: dynamic tqdm & fallback transfer progress
     │   │
     │   ├── models/
     │   │   └── video.py                # VideoJob ORM model, JobStatus enum, Pydantic schema
@@ -225,6 +227,9 @@ nimblevault/
     │   ├── demo.py                     # Zero-credential reviewer demonstration
     │   ├── auth_youtube.py             # YouTube OAuth2 interactive authentication helper
     │   └── generate_metadata.py        # Standalone metadata generation utility
+    │
+    ├── tests/
+    │   └── test_progress.py            # Unit tests for progress bar & transfer mechanics
     │
     ├── requirements.txt                # Pinned Python dependencies
     ├── .env.example                    # Environment variable template (safe to commit)
